@@ -1,27 +1,40 @@
 #pragma once
 
 #if defined(_WIN32)
-#include <direct.h>
+    #include <direct.h>
+    #include <sys/stat.h>
 
-#define get_wd _getcwd
-#define change_wd _chdir
-#define make_dir _mkdir(path)
+    #define getcwd _getcwd
+    #define chdir _chdir
+    #define mkdir(path) _mkdir(path)
+    #define rmdir _rmdir
+    
+    #if defined(_WIN64)
+        #define stat _stat64
+    #else
+        #define stat _stat32
+    #endif
 #else
-#include <unistd.h>
-#include <sys/stat.h>
+    #include <unistd.h>
+    #include <sys/stat.h>
 
-#define get_wd getcwd
-#define change_wd chdir
-#define make_dir(path) mkdir(path, 0777) // code 0777 grants universal perms
+    #define getcwd getcwd
+    #define chdir chdir
+    #define mkdir(path) mkdir(path, 0777) // code 0777 grants universal perms
+    #define rmdir rmdir
+    #define stat stat
 #endif
 
+#define SHELL_VERSION_MAJOR 0
+#define SHELL_VERSION_MINOR 0
+#define SHELL_VERSION_PATCH 1
+
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 typedef int (*shell_cmd_t)(int, char**);
-
-/// current working directory relative to the tvm16 executable
-const char* SHELL_CURRENT_WORKING_DIRECTORY;
 
 /// gets a command from the user and executes it
 /// returns 1 on success, 0 on failure
@@ -38,29 +51,14 @@ extern char* shell_getln(void);
 /// this is called within shell_loop(), avoid calling it on its own
 extern char** shell_parseln(char* ln, int* cnt);
 
-/// prints a list of commands
-extern int shell_help(int argc, char** argv);
+/// print a list of commands
+extern int shell_help(int argc, char* argv[]);
 
-/// move to directory
-extern int shell_moveto(int argc, char** argv);
+/// quit tvm-16
+extern int shell_quit(int argc, char* argv[]);
 
-/// list contents of current directory
-extern int shell_list(int argc, char** argv);
+// attempts to execute a command from a list of arguments
+extern int shell_exec_cmd(int argc, char* argv[]);
 
-/// create new file
-extern int shell_newfile(int argc, char** argv);
-
-/// create new directory
-extern int shell_newdir(int argc, char** argv);
-
-/// delete file
-extern int shell_dltfile(int argc, char** argv);
-
-/// delete directory
-extern int shell_dltdir(int argc, char** argv);
-
-// run a tvm-16 program
-extern int shell_run(int argc, char** argv);
-
-// quit tvm-16
-extern int shell_quit(int argc, char** argv);
+/// returns the number of built-in commands
+extern int shell_cmd_cnt();
