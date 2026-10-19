@@ -86,8 +86,8 @@ Each instruction occupies 6 bytes:
 | :- | :- |
 | `0` | variant |
 | `1` | opcode |
-| `2–3` | first operand, often called the `SOURCE` or `SRC` operand |
-| `4–5` | second operand, often called the `DESTINATION` or `DEST` operand |
+| `2–3` | first operand, often called the "destination" or "destination operand" |
+| `4–5` | second operand, often called the "source" or "source operand" |
 
 For example:
 
@@ -176,7 +176,7 @@ TAsm (TVM-16 Assembly) maps machine instructions to human-readable mnemonics.
 ### Syntax
 
 ```
-[mnemonic] [operand 1 (if used)], [operand 2 (if used)]
+[mnemonic] [destination], [source]
 ```
 
 Comments begin with `#` and continue to the end of the line.
@@ -253,7 +253,7 @@ LDW R3, 0x2000     # R3 = the value 0x2000 (no @, so no memory access)
 LDW R0, @R3        # R0 = the word stored at the address held in R3
 ```
 
-Store instructions (`STW`, `STB`) are the exception: their first operand is always the destination address, so it is written without `@` (for example `STW 0x2000, R0` or `STW R3, R0`).
+Store instructions (`STW`, `STB`) are the exception: their destination operand is always interpreted as an address, so it is written without `@` (for example `STW 0x2000, R0` or `STW R3, R0`).
 
 ### Segments
 
@@ -603,7 +603,7 @@ These instructions perform mathematical operations on data.
 
 #### `0x16`: ADD (Add)
 Performs an unsigned addition on the two operands.\
-Stores the result in the first operand.
+Stores the result in the destination.
 
 | Flag | Condition |
 | :- | :- |
@@ -619,7 +619,7 @@ Stores the result in the first operand.
 ***
 #### `0x17`: ADS (Add Signed)
 Performs a signed addition on the two operands.\
-Stores the result in the first operand.
+Stores the result in the destination.
 
 | Flag | Condition |
 | :- | :- |
@@ -637,7 +637,7 @@ Stores the result in the first operand.
 ***
 #### `0x18`: ADC (Add With Carry)
 Performs an unsigned addition of the two operands and `CF` (operand 1 + operand 2 + `CF`).\
-Stores the result in the first operand.
+Stores the result in the destination.
 
 | Flag | Condition |
 | :- | :- |
@@ -653,7 +653,7 @@ Stores the result in the first operand.
 ***
 #### `0x19`: SUB (Subtract)
 Performs an unsigned subtraction on the two operands.\
-Stores the result in the first operand.
+Stores the result in the destination.
 
 | Flag | Condition |
 | :- | :- |
@@ -669,7 +669,7 @@ Stores the result in the first operand.
 ***
 #### `0x1A`: SBS (Subtract Signed)
 Performs a signed subtraction on the two operands.\
-Stores the result in the first operand.
+Stores the result in the destination.
 
 | Flag | Condition |
 | :- | :- |
@@ -687,7 +687,7 @@ Stores the result in the first operand.
 ***
 #### `0x1B`: SBB (Subtract With Borrow)
 Performs an unsigned subtraction of the two operands and `CF` (operand 1 - operand 2 - `CF`).\
-Stores the result in the first operand.
+Stores the result in the destination.
 
 | Flag | Condition |
 | :- | :- |
@@ -701,9 +701,9 @@ Stores the result in the first operand.
 | `0x2` | `SBB [Rn], [@Rn]` |
 | `0x3` | `SBB [Rn], [@immediate]` |
 ***
-#### `0x1C`: AND (Bitwise And)
-Performs a bitwise And on the two operands.\
-Stores the result in the first operand.
+#### `0x1C`: AND (Bitwise AND)
+Performs a bitwise AND on the two operands.\
+Stores the result in the destination.
 
 | Flag | Condition |
 | :- | :- |
@@ -716,9 +716,9 @@ Stores the result in the first operand.
 | `0x2` | `AND [Rn], [@Rn]` |
 | `0x3` | `AND [Rn], [@immediate]` |
 ***
-#### `0x1D`: IOR (Bitwise Inclusive Or)
-Performs a bitwise inclusive or on the two operands.\
-Stores the result in the first operand.
+#### `0x1D`: IOR (Bitwise Inclusive OR)
+Performs a bitwise inclusive OR on the two operands.\
+Stores the result in the destination.
 
 | Flag | Condition |
 | :- | :- |
@@ -731,9 +731,9 @@ Stores the result in the first operand.
 | `0x2` | `IOR [Rn], [@Rn]` |
 | `0x3` | `IOR [Rn], [@immediate]` |
 ***
-#### `0x1E`: XOR (Bitwise Exclusive Or)
-Performs a bitwise exclusive or on the two operands.\
-Stores the result in the first operand.
+#### `0x1E`: XOR (Bitwise Exclusive OR)
+Performs a bitwise exclusive OR on the two operands.\
+Stores the result in the destination.
 
 | Flag | Condition |
 | :- | :- |
@@ -746,8 +746,8 @@ Stores the result in the first operand.
 | `0x2` | `XOR [Rn], [@Rn]` |
 | `0x3` | `XOR [Rn], [@immediate]` |
 ***
-#### `0x1F`: NOT (Bitwise Not)
-Performs a bitwise not on the operand and stores the result in the operand.
+#### `0x1F`: NOT (Bitwise NOT)
+Performs a bitwise NOT on the operand and stores the result in the operand.
 
 | Flag | Condition |
 | :- | :- |
@@ -816,13 +816,13 @@ Performs a signed comparison on the two operands without modifying either one.
 | `0x3` | `CPS [Rn], [@immediate]` |
 
 ## System Calls
-System calls (abbreviated as "syscalls"), are operations that hand execution of the program over to the runtime environment. They can be used for low-level utilities beyond the scope of the base instruction set, like printing to the console or reading from a file. System calls are implementation-defined, and will differ depending on the runtime environment you use.
+System calls (abbreviated as "syscalls"), are operations that hand execution of the program over to the runtime environment. They can be used for input/output operations, like printing to the console or reading from a file, or miscellaneous utilities beyond the scope of the base instruction set. System calls are implementation-defined, and will differ depending on the runtime environment you use.
 
-The system call ID is passed to the runtime in `R0`. It may also read in or write back additional data in any of the general-purpose registers (`R0`-`R3`). The exact usage of the registers is defined by the syscall ID. After the arguments are loaded, .
+The system call ID is passed to the runtime in `R0`. It may also read in or write back additional data in any of the general-purpose registers (`R0`-`R3`). The exact usage of the registers is defined by the syscall ID. After the arguments are loaded, the program must invoke the syscall by executing the `SYS` instruction.
 For example, a syscall that reads a file might take the file descriptor in `R1`, the buffer address in `R2`, and the number of bytes to read in `R3`. The syscall might then return the number of bytes actually read in `R0`.
 ```
-# Example: syscall 0x01 reads from a file descriptor
-LDW R0, 0x01
+# Example: syscall 0x00 reads from a file descriptor
+LDW R0, 0
 LDW R1, fd
 LDW R2, buffer
 LDW R3, 0x100
