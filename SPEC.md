@@ -351,12 +351,12 @@ main:
 
 The executable file would look like this (translated to hexadecimal for readability):
 ```
-70 54 56 4D
-0C 00 03 00
-34 12 78
-03 01 00 00 00 00
-01 03 02 00 00 00
+70 54 56 4D 0C 00 03 00
+34 12 78 03 01 00 00 00
+00 01 03 02 00 00 00
 ```
+
+When the program is loaded into memory, the CPU reads the first 4 bytes to verify that the file is a valid TVM-16 executable. It then reads the next 2 bytes to determine the size of the STATIC segment, and the following 2 bytes to determine the size of the DATA segment. The CPU then initializes the DATA segment with the values provided in the executable file, and finally loads the CODE segment into memory starting at address `0xA000`. The CPU then sets `PC` to `0xA000` and begins executing instructions.
 
 ## Instruction Set
 
