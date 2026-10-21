@@ -55,10 +55,10 @@ The CPU has eight 16-bit registers. Registers provide the intermediary between t
 
 At program start:
 
-- `PC` is initialized to `0xA000`.
-- `BP` is initialized to `0x9FFF`.
+- `PC` is initialized to `0x8000`.
+- `BP` is initialized to `0x7FFF`.
 - Command-line arguments are pushed onto the stack before execution begins.
-- `SP` is initialized to the top of the stack **after** the command-line arguments have been pushed. With no arguments, `SP` equals `BP` (`0x9FFF`).
+- `SP` is initialized to the top of the stack **after** the command-line arguments have been pushed. With no arguments, `SP` equals `BP` (`0x7FFF`).
 - `R0`, `R1`, `R2`, `R3`, and `FL` are initialized to `0x0000`.
 
 `SP` always points at the most recently pushed value. A push first decrements `SP` by the size of the value and then writes the value at the new `SP`; a pop reads the value at `SP` and then increments `SP`. The stack-frame offsets in [Calling Convention](#calling-convention) depend on this behavior.
@@ -86,8 +86,8 @@ Each instruction occupies 6 bytes:
 | :- | :- |
 | `0` | variant |
 | `1` | opcode |
-| `2–3` | first operand, often called the `SOURCE` or `SRC` operand |
-| `4–5` | second operand, often called the `DESTINATION` or `DEST` operand |
+| `2–3` | first operand, often called the "destination" or "destination operand" |
+| `4–5` | second operand, often called the "source" or "source operand" |
 
 For example:
 
@@ -176,7 +176,7 @@ TAsm (TVM-16 Assembly) maps machine instructions to human-readable mnemonics.
 ### Syntax
 
 ```
-[mnemonic] [operand 1 (if used)], [operand 2 (if used)]
+[mnemonic] [destination], [source]
 ```
 
 Comments begin with `#` and continue to the end of the line.
@@ -253,11 +253,11 @@ LDW R3, 0x2000     # R3 = the value 0x2000 (no @, so no memory access)
 LDW R0, @R3        # R0 = the word stored at the address held in R3
 ```
 
-Store instructions (`STW`, `STB`) are the exception: their first operand is always the destination address, so it is written without `@` (for example `STW 0x2000, R0` or `STW R3, R0`).
+Store instructions (`STW`, `STB`) are the exception: their destination operand is always interpreted as an address, so it is written without `@` (for example `STW 0x2000, R0` or `STW R3, R0`).
 
 ### Segments
 
-Programs contain four segments. STATIC starts at `0x0000` and DATA follows it. The stack occupies the region ending at `0x9FFF`, and CODE starts at `0xA000`. The region between DATA and the stack is unreserved; if the stack grows past it, it overwrites DATA or STATIC.
+Programs contain four segments. STATIC starts at `0x0000` and DATA follows it. The stack occupies the region ending at `0x7FFF`, and CODE starts at `0x8000`. The region between DATA and the stack is unreserved; if the stack grows past it, it overwrites DATA or STATIC.
 
 ```
 0x0000 ┌───────────────────────────────┐
@@ -271,9 +271,13 @@ Programs contain four segments. STATIC starts at `0x0000` and DATA follows it. T
        ├───────────────────────────────┤
        │ STACK: frames and arguments   │
        │ grows toward lower addresses  │
-0x9FFF ├───────────────────────────────┤
-0xA000 │ CODE: executable instructions │
+0x7FFF ├───────────────────────────────┤
+0x8000 │ CODE: executable instructions │
        │ grows toward higher addresses │
+       │                               │
+       │                               │
+       │                               │
+       │                               │
 0xFFFF └───────────────────────────────┘
 ```
 
@@ -351,12 +355,12 @@ main:
 
 The executable file would look like this (translated to hexadecimal for readability):
 ```
-70 54 56 4D
-0C 00 03 00
-34 12 78
-03 01 00 00 00 00
-01 03 02 00 00 00
+70 54 56 4D 0C 00 03 00
+34 12 78 03 01 00 00 00
+00 01 03 02 00 00 00
 ```
+
+When the program is loaded into memory, the CPU reads the first 4 bytes to verify that the file is a valid TVM-16 executable. It then reads the next 2 bytes to determine the size of the STATIC segment, and the following 2 bytes to determine the size of the DATA segment. The CPU then initializes the DATA segment with the values provided in the executable file, and finally loads the CODE segment into memory starting at address `0x8000`. The CPU then sets `PC` to `0x8000` and begins executing instructions.
 
 ## Instruction Set
 
@@ -603,7 +607,7 @@ These instructions perform mathematical operations on data.
 
 #### `0x16`: ADD (Add)
 Performs an unsigned addition on the two operands.\
-Stores the result in the first operand.
+Stores the result in the destination.
 
 | Flag | Condition |
 | :- | :- |
@@ -619,12 +623,11 @@ Stores the result in the first operand.
 ***
 #### `0x17`: ADS (Add Signed)
 Performs a signed addition on the two operands.\
-Stores the result in the first operand.
+Stores the result in the destination.
 
 | Flag | Condition |
 | :- | :- |
 | `ZF` | Result = `0` |
-| `CF` | Operation produced a carry |
 | `SF` | Result < `0` |
 | `OF` | Signed overflow occurred |
 
@@ -637,7 +640,7 @@ Stores the result in the first operand.
 ***
 #### `0x18`: ADC (Add With Carry)
 Performs an unsigned addition of the two operands and `CF` (operand 1 + operand 2 + `CF`).\
-Stores the result in the first operand.
+Stores the result in the destination.
 
 | Flag | Condition |
 | :- | :- |
@@ -653,7 +656,7 @@ Stores the result in the first operand.
 ***
 #### `0x19`: SUB (Subtract)
 Performs an unsigned subtraction on the two operands.\
-Stores the result in the first operand.
+Stores the result in the destination.
 
 | Flag | Condition |
 | :- | :- |
@@ -669,12 +672,11 @@ Stores the result in the first operand.
 ***
 #### `0x1A`: SBS (Subtract Signed)
 Performs a signed subtraction on the two operands.\
-Stores the result in the first operand.
+Stores the result in the destination.
 
 | Flag | Condition |
 | :- | :- |
 | `ZF` | Result = `0` |
-| `CF` | Operation produced a borrow |
 | `SF` | Result < `0`|
 | `OF` | Signed overflow or underflow occurred |
 
@@ -687,7 +689,7 @@ Stores the result in the first operand.
 ***
 #### `0x1B`: SBB (Subtract With Borrow)
 Performs an unsigned subtraction of the two operands and `CF` (operand 1 - operand 2 - `CF`).\
-Stores the result in the first operand.
+Stores the result in the destination.
 
 | Flag | Condition |
 | :- | :- |
@@ -701,9 +703,9 @@ Stores the result in the first operand.
 | `0x2` | `SBB [Rn], [@Rn]` |
 | `0x3` | `SBB [Rn], [@immediate]` |
 ***
-#### `0x1C`: AND (Bitwise And)
-Performs a bitwise And on the two operands.\
-Stores the result in the first operand.
+#### `0x1C`: AND (Bitwise AND)
+Performs a bitwise AND on the two operands.\
+Stores the result in the destination.
 
 | Flag | Condition |
 | :- | :- |
@@ -716,9 +718,9 @@ Stores the result in the first operand.
 | `0x2` | `AND [Rn], [@Rn]` |
 | `0x3` | `AND [Rn], [@immediate]` |
 ***
-#### `0x1D`: IOR (Bitwise Inclusive Or)
-Performs a bitwise inclusive or on the two operands.\
-Stores the result in the first operand.
+#### `0x1D`: IOR (Bitwise Inclusive OR)
+Performs a bitwise inclusive OR on the two operands.\
+Stores the result in the destination.
 
 | Flag | Condition |
 | :- | :- |
@@ -731,9 +733,9 @@ Stores the result in the first operand.
 | `0x2` | `IOR [Rn], [@Rn]` |
 | `0x3` | `IOR [Rn], [@immediate]` |
 ***
-#### `0x1E`: XOR (Bitwise Exclusive Or)
-Performs a bitwise exclusive or on the two operands.\
-Stores the result in the first operand.
+#### `0x1E`: XOR (Bitwise Exclusive OR)
+Performs a bitwise exclusive OR on the two operands.\
+Stores the result in the destination.
 
 | Flag | Condition |
 | :- | :- |
@@ -746,8 +748,8 @@ Stores the result in the first operand.
 | `0x2` | `XOR [Rn], [@Rn]` |
 | `0x3` | `XOR [Rn], [@immediate]` |
 ***
-#### `0x1F`: NOT (Bitwise Not)
-Performs a bitwise not on the operand and stores the result in the operand.
+#### `0x1F`: NOT (Bitwise NOT)
+Performs a bitwise NOT on the operand and stores the result in the operand.
 
 | Flag | Condition |
 | :- | :- |
@@ -816,13 +818,13 @@ Performs a signed comparison on the two operands without modifying either one.
 | `0x3` | `CPS [Rn], [@immediate]` |
 
 ## System Calls
-System calls (abbreviated as "syscalls"), are operations that hand execution of the program over to the runtime environment. They can be used for low-level utilities beyond the scope of the base instruction set, like printing to the console or reading from a file. System calls are implementation-defined, and will differ depending on the runtime environment you use.
+System calls (abbreviated as "syscalls"), are operations that hand execution of the program over to the runtime environment. They can be used for input/output operations, like printing to the console or reading from a file, or miscellaneous utilities beyond the scope of the base instruction set. System calls are implementation-defined, and will differ depending on the runtime environment you use.
 
-The system call ID is passed to the runtime in `R0`. It may also read in or write back additional data in any of the general-purpose registers (`R0`-`R3`). The exact usage of the registers is defined by the syscall ID. After the arguments are loaded, .
+The system call ID is passed to the runtime in `R0`. It may also read in or write back additional data in any of the general-purpose registers (`R0`-`R3`). The exact usage of the registers is defined by the syscall ID. After the arguments are loaded, the program must invoke the syscall by executing the `SYS` instruction.
 For example, a syscall that reads a file might take the file descriptor in `R1`, the buffer address in `R2`, and the number of bytes to read in `R3`. The syscall might then return the number of bytes actually read in `R0`.
 ```
-# Example: syscall 0x01 reads from a file descriptor
-LDW R0, 0x01
+# Example: syscall 0x00 reads from a file descriptor
+LDW R0, 0
 LDW R1, fd
 LDW R2, buffer
 LDW R3, 0x100
