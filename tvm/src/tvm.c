@@ -2,6 +2,7 @@
     #include <winbase.h>
     #include <fileapi.h>
     #include <memoryapi.h>
+    #include <wchar.h>
 #elif defined(__unix__) || defined(__APPLE__)
     #include <unistd.h>
     #include <sys/mman.h>
@@ -15,16 +16,6 @@
 #include <stdlib.h>
 #include <tvm/cpuprocs.h>
 #include <tvm/cpuspec.h>
-
-#pragma pack(push, 1)
-/// @brief Represents a TVM-16 CPU instruction.
-typedef struct TVM_Instruction {
-    uint8_t variant;
-    uint8_t opcode;
-    uint16_t dest;
-    uint16_t src;
-} TVM_Instruction;
-#pragma pack(pop, 1)
 
 uint16_t regs[8];
 uint8_t memory[TVM_ADDRESS_SPACE_WIDTH];
@@ -68,6 +59,121 @@ int _instrProc_SHR(uint8_t variant, uint16_t dest, uint16_t src); // 0x21 - Bitw
 int _instrProc_CMP(uint8_t variant, uint16_t dest, uint16_t src); // 0x22 - Compare
 int _instrProc_CPS(uint8_t variant, uint16_t dest, uint16_t src); // 0x23 - Compare Signed
 
+void* _createReadonlyFileView(const char* restrict filename, uint64_t* restrict size, uint64_t* restrict error) {
+#if defined(_WIN32)
+    // win32-compliant implementation
+
+    HANDLE file = CreateFileA(
+        filename,
+        GENERIC_READ,
+        0,
+        NULL,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL
+    );
+
+    if (file == INVALID_HANDLE_VALUE) {
+        if (error != NULL) *error = GetLastError();
+        if (size != NULL) *size = 0;
+        return NULL;
+    }
+
+    LARGE_INTEGER fileSize;
+    if (!GetFileSizeEx(file, &fileSize)) {
+        if (error != NULL) *error = GetLastError();
+        if (size != NULL) *size = 0;
+        CloseHandle(file);
+        return NULL;
+    }
+
+    if (fileSize.QuadPart == 0) {
+        if (error != NULL) *error = 0;
+        if (size != NULL) *size = 0;
+        CloseHandle(file);
+        return NULL;
+    }
+
+    HANDLE mapping = CreateFileMappingA(
+        file,
+        NULL,
+        PAGE_READONLY,
+        fileSize.HighPart,
+        fileSize.LowPart,
+        NULL
+    );
+
+    CloseHandle(file);
+
+    if (mapping == NULL) {
+        if (error != NULL) *error = GetLastError();
+        if (size != NULL) *size = 0;
+        return NULL;
+    }
+
+    void* data = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
+
+    CloseHandle(mapping); 
+
+    if (data == NULL) {
+        if (error != NULL) *error = GetLastError();
+        if (size != NULL) *size = 0;
+        return NULL;
+    }
+
+    if (size != NULL) *size = (uint64_t)fileSize.QuadPart;
+    return data;
+#else
+    // posix-compliant implementation
+
+    int fileDesc = open(filename, O_RDONLY);
+    if (fileDesc == -1) {
+        if (error != NULL) *error = (uint64_t)errno;
+        if (size != NULL) *size = 0;
+        return NULL;
+    }
+
+    struct stat fileStat;
+    if (fstat(fileDesc, &fileStat) == -1) {
+        if (error != NULL) *error = (uint64_t)errno;
+        if (size != NULL) *size = 0;
+        close(fileDesc);
+        return NULL;
+    }
+
+    if (fileStat.st_size == 0) {
+        close(fileDesc);
+        if (error != NULL) *error = 0;
+        if (size != NULL) *size = 0;
+        return NULL;
+    }
+
+
+    void* data = mmap(NULL, fileStat.st_size, PROT_READ, MAP_PRIVATE, fileDesc, 0);
+   
+    if (data == MAP_FAILED) {
+        if (error != NULL) *error = (uint64_t)errno;
+        if (size != NULL) *size = 0;
+        close(fileDesc);
+        return NULL;
+    }   
+
+    close(fileDesc);
+
+    if (size != NULL) *size = (uint64_t)fileStat.st_size;
+    return data;
+#endif
+}
+
+void _destroyReadonlyFileView(const void* restrict view, uint64_t size) {
+    if (view == NULL || size == 0) return;
+#if defined(_WIN32)
+    UnmapViewOfFile(view);
+#else
+    munmap((void*)view, (size_t)size);
+#endif
+}
+
 void _loadInstrProcs() {
     instrProcs[TVM_OPCODE_NOP] = _instrProc_NOP;
     instrProcs[TVM_OPCODE_LDW] = _instrProc_LDW;
@@ -109,6 +215,30 @@ void _loadInstrProcs() {
 
 int main() {
     _loadInstrProcs();
+
+    const char* path = "file.tvm";
+
+    uint64_t fileSize, error;
+    void* fileView = _createReadonlyFileView(path, &fileSize, &error);
+
+    if (fileView == NULL) {
+#if defined(_WIN32)
+        if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND) {
+            fprintf(stderr, "error: at \'%s\', no such file exists\n", path);
+        }
+#else
+        if (errno == ENOENT || error == ENOTDIR) {
+            fprintf(stderr, "error: at \'%s\', no such file exists\n", path);
+        }
+#endif
+        else if (fileSize == 0) {
+            fprintf(stderr, "error: file at \'%s\' contains no data\n", path);
+        } else {
+            fprintf(stderr, "error: could not access file \'%s\'\n", path);
+        }
+
+        return EXIT_FAILURE;
+    }
 }
 
 
@@ -256,10 +386,12 @@ int _instrProc_PSW(uint8_t variant, uint16_t dest, uint16_t src) {
             if (dest > 7) return TVM_SIGNAL_ILLEGAL;
             _instrProc_LDW(1, TVM_REGID_SP, regs[TVM_REGID_SP] - 2); // register, immediate
             _instrProc_STW(2, regs[TVM_REGID_SP], dest); // immediate, register
+            break;
         }
         case 1: {
             _instrProc_LDW(1, TVM_REGID_SP, regs[TVM_REGID_SP] - 2); // register, immediate
             _instrProc_STW(3, regs[TVM_REGID_SP], dest); // immediate, immediate
+            break;
         }
 
         default:
@@ -275,10 +407,12 @@ int _instrProc_PSB(uint8_t variant, uint16_t dest, uint16_t src) {
             if (dest > 7) return TVM_SIGNAL_ILLEGAL;
             _instrProc_LDW(1, TVM_REGID_SP, regs[TVM_REGID_SP] - 1); // register, immediate
             _instrProc_STB(2, regs[TVM_REGID_SP], dest); // immediate, register
+            break;
         }
         case 1: {
             _instrProc_LDW(1, TVM_REGID_SP, regs[TVM_REGID_SP] - 1); // register, immediate
             _instrProc_STB(3, regs[TVM_REGID_SP], dest); // immediate, immediate
+            break;
         }
 
         default:
@@ -289,18 +423,18 @@ int _instrProc_PSB(uint8_t variant, uint16_t dest, uint16_t src) {
 }
 
 int _instrProc_PPW(uint8_t variant, uint16_t dest, uint16_t src) {
-    if (dest > 7) {
+    if (dest > 7 || variant != 0) {
         return TVM_SIGNAL_ILLEGAL;
     }
 
-    TVM_WRITE_U16_LENDIAN(&regs[dest], TVM_READ_U16_LENDIAN(memory + TVM_READ_U16_LENDIAN(&regs[TVM_REGID_SP])));
+    TVM_WRITE_U16_LENDIAN(&regs[dest], TVM_READ_U16_LENDIAN(memory + TVM_READ_U16_LENDIAN(regs + TVM_REGID_SP)));
     _instrProc_LDW(1, TVM_REGID_SP, regs[TVM_REGID_SP] + 2); // register, immediate
 
     return TVM_SIGNAL_PROCEED;
 }
 
 int _instrProc_PPB(uint8_t variant, uint16_t dest, uint16_t src) {
-    if (dest > 7) {
+    if (dest > 7 || variant != 0) {
         return TVM_SIGNAL_ILLEGAL;
     }
 
@@ -311,33 +445,36 @@ int _instrProc_PPB(uint8_t variant, uint16_t dest, uint16_t src) {
 }
 
 int _instrProc_HLT(uint8_t variant, uint16_t dest, uint16_t src) {
+    if (variant != 0) {
+        return TVM_SIGNAL_ILLEGAL;
+    }
+
     return TVM_SIGNAL_HALT;
 }
 
 int _instrProc_SYS(uint8_t variant, uint16_t dest, uint16_t src) {
+    if (variant != 0) {
+        return TVM_SIGNAL_ILLEGAL;
+    }
+
     return TVM_SIGNAL_SYSCALL;
 }
 
 int _instrProc_BRC(uint8_t variant, uint16_t dest, uint16_t src) {
     switch (variant) {
-        case 0: {
+        case 0:
             if (dest > 7) return TVM_SIGNAL_ILLEGAL;
-            _instrProc_LDW(0, TVM_REGID_PC, regs[dest]); // register, register
-            break;
-        }
-        case 1: {
-            _instrProc_LDW(1, TVM_REGID_PC, dest); // register, immediate
-            break;
-        }
-        case 2: {
+            return _instrProc_LDW(1, TVM_REGID_PC, regs[dest]); // register, immediate
+
+        case 1:
+            return _instrProc_LDW(1, TVM_REGID_PC, dest); // register, immediate
+
+        case 2:
             if (dest > 7) return TVM_SIGNAL_ILLEGAL;
-            _instrProc_LDW(0, TVM_REGID_PC, TVM_READ_U16_LENDIAN(memory + regs[dest])); // register, &register
-            break;
-        }
-        case 3: {
-            _instrProc_LDW(1, TVM_REGID_PC, TVM_READ_U16_LENDIAN(memory + dest)); // register, &immediate
-            break;
-        }
+            return _instrProc_LDW(1, TVM_REGID_PC, TVM_READ_U16_LENDIAN(memory + regs[dest])); // register, immediate
+
+        case 3:
+            return _instrProc_LDW(1, TVM_REGID_PC, TVM_READ_U16_LENDIAN(memory + dest)); // register, &immediate
 
         default:
             return TVM_SIGNAL_ILLEGAL;
@@ -441,9 +578,51 @@ int _instrProc_CLL(uint8_t variant, uint16_t dest, uint16_t src) {
 }
 
 int _instrProc_RET(uint8_t variant, uint16_t dest, uint16_t src) {
+    if (variant != 0) {
+        return TVM_SIGNAL_ILLEGAL;
+    }
+
+    _instrProc_PPW(0, TVM_REGID_PC, 0);
+
+    return TVM_SIGNAL_PROCEED;
+} 
+
+int _instrProc_ADD(uint8_t variant, uint16_t dest, uint16_t src) {
     switch (variant) {
         case 0: {
-            _instrProc_PPW(0, TVM_REGID_PC, 0); // register
+            if (dest > 7 || src > 7) return TVM_SIGNAL_ILLEGAL;
+            uint32_t result = (uint32_t)regs[dest] + (uint32_t)regs[src];
+            regs[dest] = (uint16_t)result;
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~(TVM_ZERO_FLAG_BIT | TVM_CARRY_FLAG_BIT)) |
+                ((result == 0) ? TVM_ZERO_FLAG_BIT : 0) |
+                ((result > 0xFFFF) ? TVM_CARRY_FLAG_BIT : 0);
+            break;
+        }
+        case 1: {
+            if (dest > 7) return TVM_SIGNAL_ILLEGAL;
+            uint32_t result = (uint32_t)regs[dest] + (uint32_t)src;
+            regs[dest] = (uint16_t)result;
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~(TVM_ZERO_FLAG_BIT | TVM_CARRY_FLAG_BIT)) |
+                ((result == 0) ? TVM_ZERO_FLAG_BIT : 0) |
+                ((result > 0xFFFF) ? TVM_CARRY_FLAG_BIT : 0);
+            break;
+        }
+        case 2: {
+            if (dest > 7 || src > 7) return TVM_SIGNAL_ILLEGAL;
+            uint32_t result = (uint32_t)regs[dest] + (uint32_t)TVM_READ_U16_LENDIAN(memory + regs[src]);
+            regs[dest] = (uint16_t)result;
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~(TVM_ZERO_FLAG_BIT | TVM_CARRY_FLAG_BIT)) |
+                ((result == 0) ? TVM_ZERO_FLAG_BIT : 0) |
+                ((result > 0xFFFF) ? TVM_CARRY_FLAG_BIT : 0);
+            break;
+        }
+        case 3: {
+            if (dest > 7) return TVM_SIGNAL_ILLEGAL;
+            uint32_t result = (uint32_t)regs[dest] + (uint32_t)TVM_READ_U16_LENDIAN(memory + src);
+            regs[dest] = (uint16_t)result;
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~(TVM_ZERO_FLAG_BIT | TVM_CARRY_FLAG_BIT)) |
+                ((result == 0) ? TVM_ZERO_FLAG_BIT : 0) |
+                ((result > 0xFFFF) ? TVM_CARRY_FLAG_BIT : 0);
             break;
         }
 
@@ -452,4 +631,485 @@ int _instrProc_RET(uint8_t variant, uint16_t dest, uint16_t src) {
     }
 
     return TVM_SIGNAL_PROCEED;
-} 
+}
+
+// make sure to update the zero flag, sign flag, and overflow flag for signed addition
+int _instrProc_ADS(uint8_t variant, uint16_t dest, uint16_t src) {
+    switch (variant) {
+        case 0: {
+            if (dest > 7 || src > 7) return TVM_SIGNAL_ILLEGAL;
+            int32_t result = (int32_t)(int16_t)regs[dest] + (int32_t)(int16_t)regs[src];
+            regs[dest] = (uint16_t)result;
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~(TVM_ZERO_FLAG_BIT | TVM_SIGN_FLAG_BIT | TVM_OVERFLOW_FLAG_BIT)) |
+                ((result == 0) ? TVM_ZERO_FLAG_BIT : 0) |
+                ((result < -32768 || result > 32767) ? TVM_OVERFLOW_FLAG_BIT : 0) |
+                ((result < 0) ? TVM_SIGN_FLAG_BIT : 0);
+            break;
+        }
+        case 1: {
+            if (dest > 7) return TVM_SIGNAL_ILLEGAL;
+            int32_t result = (int32_t)(int16_t)regs[dest] + (int32_t)(int16_t)src;
+            regs[dest] = (uint16_t)result;
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~(TVM_ZERO_FLAG_BIT | TVM_SIGN_FLAG_BIT | TVM_OVERFLOW_FLAG_BIT)) |
+                ((result == 0) ? TVM_ZERO_FLAG_BIT : 0) |
+                ((result < -32768 || result > 32767) ? TVM_OVERFLOW_FLAG_BIT : 0) |
+                ((result < 0) ? TVM_SIGN_FLAG_BIT : 0);
+            break;
+        }
+        case 2: {
+            if (dest > 7 || src > 7) return TVM_SIGNAL_ILLEGAL;
+            int32_t result = (int32_t)(int16_t)regs[dest] + (int32_t)(int16_t)TVM_READ_U16_LENDIAN(memory + regs[src]);
+            regs[dest] = (uint16_t)result;
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~(TVM_ZERO_FLAG_BIT | TVM_SIGN_FLAG_BIT | TVM_OVERFLOW_FLAG_BIT)) |
+                ((result == 0) ? TVM_ZERO_FLAG_BIT : 0) |
+                ((result < -32768 || result > 32767) ? TVM_OVERFLOW_FLAG_BIT : 0) |
+                ((result < 0) ? TVM_SIGN_FLAG_BIT : 0);
+            break;
+        }
+        case 3: {
+            if (dest > 7) return TVM_SIGNAL_ILLEGAL;
+            int32_t result = (int32_t)(int16_t)regs[dest] + (int32_t)(int16_t)TVM_READ_U16_LENDIAN(memory + src);
+            regs[dest] = (uint16_t)result;
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~(TVM_ZERO_FLAG_BIT | TVM_SIGN_FLAG_BIT | TVM_OVERFLOW_FLAG_BIT)) |
+                ((result == 0) ? TVM_ZERO_FLAG_BIT : 0) |
+                ((result < -32768 || result > 32767) ? TVM_OVERFLOW_FLAG_BIT : 0) |
+                ((result < 0) ? TVM_SIGN_FLAG_BIT : 0);
+            break;
+        }
+
+        default:
+            return TVM_SIGNAL_ILLEGAL;
+    }
+
+    return TVM_SIGNAL_PROCEED;
+}
+
+int _instrProc_ADC(uint8_t variant, uint16_t dest, uint16_t src) {
+    uint16_t operand;
+
+    switch (variant) {
+        case 0:
+            if (dest > 7 || src > 7) return TVM_SIGNAL_ILLEGAL;
+            operand = regs[src];
+            break;
+        case 1:
+            if (dest > 7) return TVM_SIGNAL_ILLEGAL;
+            operand = src;
+            break;
+        case 2:
+            if (dest > 7 || src > 7) return TVM_SIGNAL_ILLEGAL;
+            operand = TVM_READ_U16_LENDIAN(memory + regs[src]);
+            break;
+        case 3:
+            if (dest > 7) return TVM_SIGNAL_ILLEGAL;
+            operand = TVM_READ_U16_LENDIAN(memory + src);
+            break;
+
+        default:
+            return TVM_SIGNAL_ILLEGAL;
+    }
+
+    uint32_t result = (uint32_t)regs[dest] + operand +
+        ((regs[TVM_REGID_FL] & TVM_CARRY_FLAG_BIT) ? 1u : 0u);
+    regs[dest] = (uint16_t)result;
+    regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~(TVM_ZERO_FLAG_BIT | TVM_CARRY_FLAG_BIT)) |
+        ((regs[dest] == 0) ? TVM_ZERO_FLAG_BIT : 0) |
+        ((result > 0xFFFFu) ? TVM_CARRY_FLAG_BIT : 0);
+
+    return TVM_SIGNAL_PROCEED;
+}
+
+int _instrProc_SUB(uint8_t variant, uint16_t dest, uint16_t src) {
+    switch (variant) {
+        case 0: {
+            if (dest > 7 || src > 7) return TVM_SIGNAL_ILLEGAL;
+            uint32_t a = regs[dest], b = regs[src];
+            uint32_t result = a - b;
+            regs[dest] = (uint16_t)result;
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~(TVM_ZERO_FLAG_BIT | TVM_CARRY_FLAG_BIT)) |
+                ((result == 0) ? TVM_ZERO_FLAG_BIT : 0) |
+                ((b > a) ? TVM_CARRY_FLAG_BIT : 0);
+            break;
+        }
+        case 1: {
+            if (dest > 7) return TVM_SIGNAL_ILLEGAL;
+            uint32_t a = regs[dest], b = src;
+            uint32_t result = a - b;
+            regs[dest] = (uint16_t)result;
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~(TVM_ZERO_FLAG_BIT | TVM_CARRY_FLAG_BIT)) |
+                ((result == 0) ? TVM_ZERO_FLAG_BIT : 0) |
+                ((b > a) ? TVM_CARRY_FLAG_BIT : 0);
+            break;
+        }
+        case 2: {
+            if (dest > 7 || src > 7) return TVM_SIGNAL_ILLEGAL;
+            uint32_t a = regs[dest], b = TVM_READ_U16_LENDIAN(memory + regs[src]);
+            uint32_t result = a - b;
+            regs[dest] = (uint16_t)result;
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~(TVM_ZERO_FLAG_BIT | TVM_CARRY_FLAG_BIT)) |
+                ((result == 0) ? TVM_ZERO_FLAG_BIT : 0) |
+                ((b > a) ? TVM_CARRY_FLAG_BIT : 0);
+            break;
+        }
+        case 3: {
+            if (dest > 7) return TVM_SIGNAL_ILLEGAL;
+            uint32_t a = regs[dest], b = TVM_READ_U16_LENDIAN(memory + src);
+            uint32_t result = a - b;
+            regs[dest] = (uint16_t)result;
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~(TVM_ZERO_FLAG_BIT | TVM_CARRY_FLAG_BIT)) |
+                ((result == 0) ? TVM_ZERO_FLAG_BIT : 0) |
+                ((b > a) ? TVM_CARRY_FLAG_BIT : 0);
+            break;
+        }
+
+        default:
+            return TVM_SIGNAL_ILLEGAL;
+    }
+
+    return TVM_SIGNAL_PROCEED;
+}
+
+int _instrProc_SBS(uint8_t variant, uint16_t dest, uint16_t src) {
+    switch (variant) {
+        case 0: {
+            if (dest > 7 || src > 7) return TVM_SIGNAL_ILLEGAL;
+            int32_t a = (int32_t)(int16_t)regs[dest], b = (int32_t)(int16_t)regs[src];
+            int32_t result = a - b;
+            regs[dest] = (uint16_t)result;
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~(TVM_ZERO_FLAG_BIT | TVM_SIGN_FLAG_BIT | TVM_OVERFLOW_FLAG_BIT)) |
+                ((result == 0) ? TVM_ZERO_FLAG_BIT : 0) |
+                ((result < -0x8000 || result > 0x7FFF) ? TVM_OVERFLOW_FLAG_BIT : 0) |
+                ((result < 0) ? TVM_SIGN_FLAG_BIT : 0);
+            break;
+        }
+        case 1: {
+            if (dest > 7) return TVM_SIGNAL_ILLEGAL;
+            int32_t a = (int32_t)(int16_t)regs[dest], b = (int32_t)(int16_t)src;
+            int32_t result = a - b;
+            regs[dest] = (uint16_t)result;
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~(TVM_ZERO_FLAG_BIT | TVM_SIGN_FLAG_BIT | TVM_OVERFLOW_FLAG_BIT)) |
+                ((result == 0) ? TVM_ZERO_FLAG_BIT : 0) |
+                ((result < -0x8000 || result > 0x7FFF) ? TVM_OVERFLOW_FLAG_BIT : 0) |
+                ((result < 0) ? TVM_SIGN_FLAG_BIT : 0);
+            break;
+        }
+        case 2: {
+            if (dest > 7 || src > 7) return TVM_SIGNAL_ILLEGAL;
+            int32_t a = (int32_t)(int16_t)regs[dest], b = (int32_t)(int16_t)TVM_READ_U16_LENDIAN(memory + regs[src]);
+            int32_t result = a - b;
+            regs[dest] = (uint16_t)result;
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~(TVM_ZERO_FLAG_BIT | TVM_SIGN_FLAG_BIT | TVM_OVERFLOW_FLAG_BIT)) |
+                ((result == 0) ? TVM_ZERO_FLAG_BIT : 0) |
+                ((result < -0x8000 || result > 0x7FFF) ? TVM_OVERFLOW_FLAG_BIT : 0) |
+                ((result < 0) ? TVM_SIGN_FLAG_BIT : 0);
+            break;
+        }
+        case 3: {
+            if (dest > 7) return TVM_SIGNAL_ILLEGAL;
+            int32_t a = (int32_t)(int16_t)regs[dest], b = (int32_t)(int16_t)TVM_READ_U16_LENDIAN(memory + src);
+            int32_t result = a - b;
+            regs[dest] = (uint16_t)result;
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~(TVM_ZERO_FLAG_BIT | TVM_SIGN_FLAG_BIT | TVM_OVERFLOW_FLAG_BIT)) |
+                ((result == 0) ? TVM_ZERO_FLAG_BIT : 0) |
+                ((result < -0x8000 || result > 0x7FFF) ? TVM_OVERFLOW_FLAG_BIT : 0) |
+                ((result < 0) ? TVM_SIGN_FLAG_BIT : 0);
+            break;
+        }
+
+        default:
+            return TVM_SIGNAL_ILLEGAL;
+    }
+
+    return TVM_SIGNAL_PROCEED;
+}
+
+int _instrProc_SBB(uint8_t variant, uint16_t dest, uint16_t src) {
+    uint16_t operand;
+
+    switch (variant) {
+        case 0:
+            if (dest > 7 || src > 7) return TVM_SIGNAL_ILLEGAL;
+            operand = regs[src];
+            break;
+        case 1:
+            if (dest > 7) return TVM_SIGNAL_ILLEGAL;
+            operand = src;
+            break;
+        case 2:
+            if (dest > 7 || src > 7) return TVM_SIGNAL_ILLEGAL;
+            operand = TVM_READ_U16_LENDIAN(memory + regs[src]);
+            break;
+        case 3:
+            if (dest > 7) return TVM_SIGNAL_ILLEGAL;
+            operand = TVM_READ_U16_LENDIAN(memory + src);
+            break;
+        default:
+            return TVM_SIGNAL_ILLEGAL;
+    }
+
+    uint32_t subtrahend = (uint32_t)operand +
+        ((regs[TVM_REGID_FL] & TVM_CARRY_FLAG_BIT) ? 1u : 0u);
+    uint32_t minuend = regs[dest];
+    uint32_t result = minuend - subtrahend;
+    regs[dest] = (uint16_t)result;
+    regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~(TVM_ZERO_FLAG_BIT | TVM_CARRY_FLAG_BIT)) |
+        ((regs[dest] == 0) ? TVM_ZERO_FLAG_BIT : 0) |
+        ((minuend < subtrahend) ? TVM_CARRY_FLAG_BIT : 0);
+
+    return TVM_SIGNAL_PROCEED;
+}
+
+int _instrProc_AND(uint8_t variant, uint16_t dest, uint16_t src) {
+    switch (variant) {
+        case 0: {
+            if (dest > 7 || src > 7) return TVM_SIGNAL_ILLEGAL;
+            regs[dest] &= regs[src];
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~TVM_ZERO_FLAG_BIT) |
+                ((regs[dest] == 0) ? TVM_ZERO_FLAG_BIT : 0);
+            break;
+        }
+        case 1: {
+            if (dest > 7) return TVM_SIGNAL_ILLEGAL;
+            regs[dest] &= src;
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~TVM_ZERO_FLAG_BIT) |
+                ((regs[dest] == 0) ? TVM_ZERO_FLAG_BIT : 0);
+            break;
+        }
+        case 2: {
+            if (dest > 7 || src > 7) return TVM_SIGNAL_ILLEGAL;
+            regs[dest] &= TVM_READ_U16_LENDIAN(memory + regs[src]);
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~TVM_ZERO_FLAG_BIT) |
+                ((regs[dest] == 0) ? TVM_ZERO_FLAG_BIT : 0);
+            break;
+        }
+        case 3: {
+            if (dest > 7) return TVM_SIGNAL_ILLEGAL;
+            regs[dest] &= TVM_READ_U16_LENDIAN(memory + src);
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~TVM_ZERO_FLAG_BIT) |
+                ((regs[dest] == 0) ? TVM_ZERO_FLAG_BIT : 0);
+            break;
+        }
+
+        default:
+            return TVM_SIGNAL_ILLEGAL;
+    }
+
+    return TVM_SIGNAL_PROCEED;
+}
+
+int _instrProc_IOR(uint8_t variant, uint16_t dest, uint16_t src) {
+    switch (variant) {
+        case 0: {
+            if (dest > 7 || src > 7) return TVM_SIGNAL_ILLEGAL;
+            regs[dest] |= regs[src];
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~TVM_ZERO_FLAG_BIT) |
+                ((regs[dest] == 0) ? TVM_ZERO_FLAG_BIT : 0);
+            break;
+        }
+        case 1: {
+            if (dest > 7) return TVM_SIGNAL_ILLEGAL;
+            regs[dest] |= src;
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~TVM_ZERO_FLAG_BIT) |
+                ((regs[dest] == 0) ? TVM_ZERO_FLAG_BIT : 0);
+            break;
+        }
+        case 2: {
+            if (dest > 7 || src > 7) return TVM_SIGNAL_ILLEGAL;
+            regs[dest] |= TVM_READ_U16_LENDIAN(memory + regs[src]);
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~TVM_ZERO_FLAG_BIT) |
+                ((regs[dest] == 0) ? TVM_ZERO_FLAG_BIT : 0);
+            break;
+        }
+        case 3: {
+            if (dest > 7) return TVM_SIGNAL_ILLEGAL;
+            regs[dest] |= TVM_READ_U16_LENDIAN(memory + src);
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~TVM_ZERO_FLAG_BIT) |
+                ((regs[dest] == 0) ? TVM_ZERO_FLAG_BIT : 0);
+            break;
+        }
+
+        default:
+            return TVM_SIGNAL_ILLEGAL;
+    }
+
+    return TVM_SIGNAL_PROCEED;
+}
+
+int _instrProc_XOR(uint8_t variant, uint16_t dest, uint16_t src) {
+    switch (variant) {
+        case 0: {
+            if (dest > 7 || src > 7) return TVM_SIGNAL_ILLEGAL;
+            regs[dest] ^= regs[src];
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~TVM_ZERO_FLAG_BIT) |
+                ((regs[dest] == 0) ? TVM_ZERO_FLAG_BIT : 0);
+            break;
+        }
+        case 1: {
+            if (dest > 7) return TVM_SIGNAL_ILLEGAL;
+            regs[dest] ^= src;
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~TVM_ZERO_FLAG_BIT) |
+                ((regs[dest] == 0) ? TVM_ZERO_FLAG_BIT : 0);
+            break;
+        }
+        case 2: {
+            if (dest > 7 || src > 7) return TVM_SIGNAL_ILLEGAL;
+            regs[dest] ^= TVM_READ_U16_LENDIAN(memory + regs[src]);
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~TVM_ZERO_FLAG_BIT) |
+                ((regs[dest] == 0) ? TVM_ZERO_FLAG_BIT : 0);
+            break;
+        }
+        case 3: {
+            if (dest > 7) return TVM_SIGNAL_ILLEGAL;
+            regs[dest] ^= TVM_READ_U16_LENDIAN(memory + src);
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~TVM_ZERO_FLAG_BIT) |
+                ((regs[dest] == 0) ? TVM_ZERO_FLAG_BIT : 0);
+            break;
+        }
+
+        default:
+            return TVM_SIGNAL_ILLEGAL;
+    }
+
+    return TVM_SIGNAL_PROCEED;
+}
+
+int _instrProc_NOT(uint8_t variant, uint16_t dest, uint16_t src) {
+    if (dest > 7 || variant != 0) {
+        return TVM_SIGNAL_ILLEGAL;
+    }
+
+    regs[dest] = ~regs[dest];
+    regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~TVM_ZERO_FLAG_BIT) |
+        ((regs[dest] == 0) ? TVM_ZERO_FLAG_BIT : 0);
+
+    return TVM_SIGNAL_PROCEED;
+}
+
+int _instrProc_SHL(uint8_t variant, uint16_t dest, uint16_t src) {
+    if (dest > 7 || variant != 0) {
+        return TVM_SIGNAL_ILLEGAL;
+    }
+
+    uint16_t carry = (TVM_READ_U16_LENDIAN(regs + dest) & 0x8000) ? 1 : 0;
+    regs[dest] <<= 1;
+    regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~(TVM_ZERO_FLAG_BIT | TVM_CARRY_FLAG_BIT)) |
+        ((regs[dest] == 0) ? TVM_ZERO_FLAG_BIT : 0) |
+        (carry ? TVM_CARRY_FLAG_BIT : 0);
+
+    return TVM_SIGNAL_PROCEED;
+}
+
+int _instrProc_SHR(uint8_t variant, uint16_t dest, uint16_t src) {
+    if (dest > 7 || variant != 0) {
+        return TVM_SIGNAL_ILLEGAL;
+    }
+
+    uint16_t carry = (TVM_READ_U16_LENDIAN(regs + dest) & 0x0001) ? 1 : 0;
+    regs[dest] >>= 1;
+    regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~(TVM_ZERO_FLAG_BIT | TVM_CARRY_FLAG_BIT)) |
+        ((regs[dest] == 0) ? TVM_ZERO_FLAG_BIT : 0) |
+        (carry ? TVM_CARRY_FLAG_BIT : 0);
+
+    return TVM_SIGNAL_PROCEED;
+}
+
+int _instrProc_CMP(uint8_t variant, uint16_t dest, uint16_t src) {
+    switch (variant) {
+        case 0: {
+            if (dest > 7 || src > 7) return TVM_SIGNAL_ILLEGAL;
+            uint32_t a = regs[dest], b = regs[src];
+            uint32_t result = a - b;
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~(TVM_ZERO_FLAG_BIT | TVM_CARRY_FLAG_BIT)) |
+                ((result == 0) ? TVM_ZERO_FLAG_BIT : 0) |
+                ((b > a) ? TVM_CARRY_FLAG_BIT : 0);
+            break;
+        }
+        case 1: {
+            if (dest > 7) return TVM_SIGNAL_ILLEGAL;
+            uint32_t a = regs[dest], b = src;
+            uint32_t result = a - b;
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~(TVM_ZERO_FLAG_BIT | TVM_CARRY_FLAG_BIT)) |
+                ((result == 0) ? TVM_ZERO_FLAG_BIT : 0) |
+                ((b > a) ? TVM_CARRY_FLAG_BIT : 0);
+            break;
+        }
+        case 2: {
+            if (dest > 7 || src > 7) return TVM_SIGNAL_ILLEGAL;
+            uint32_t a = regs[dest], b = TVM_READ_U16_LENDIAN(memory + regs[src]);
+            uint32_t result = a - b;
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~(TVM_ZERO_FLAG_BIT | TVM_CARRY_FLAG_BIT)) |
+                ((result == 0) ? TVM_ZERO_FLAG_BIT : 0) |
+                ((b > a) ? TVM_CARRY_FLAG_BIT : 0);
+            break;
+        }
+        case 3: {
+            if (dest > 7) return TVM_SIGNAL_ILLEGAL;
+            uint32_t a = regs[dest], b = TVM_READ_U16_LENDIAN(memory + src);
+            uint32_t result = a - b;
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~(TVM_ZERO_FLAG_BIT | TVM_CARRY_FLAG_BIT)) |
+                ((result == 0) ? TVM_ZERO_FLAG_BIT : 0) |
+                ((b > a) ? TVM_CARRY_FLAG_BIT : 0);
+            break;
+        }
+
+        default:
+            return TVM_SIGNAL_ILLEGAL;
+    }
+
+    return TVM_SIGNAL_PROCEED;
+}
+
+// compare signed values and update the zero, carry, sign, and overflow flags
+int _instrProc_CPS(uint8_t variant, uint16_t dest, uint16_t src) {
+    switch (variant) {
+        case 0: {
+            if (dest > 7 || src > 7) return TVM_SIGNAL_ILLEGAL;
+            int32_t a = (int32_t)(int16_t)regs[dest], b = (int32_t)(int16_t)regs[src];
+            int32_t result = a - b;
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~(TVM_ZERO_FLAG_BIT | TVM_CARRY_FLAG_BIT | TVM_SIGN_FLAG_BIT | TVM_OVERFLOW_FLAG_BIT)) |
+                ((result == 0) ? TVM_ZERO_FLAG_BIT : 0) |
+                ((a < b) ? TVM_CARRY_FLAG_BIT : 0) |
+                ((result < -32768 || result > 32767) ? TVM_OVERFLOW_FLAG_BIT : 0) |
+                ((result < 0) ? TVM_SIGN_FLAG_BIT : 0);
+            break;
+        }
+        case 1: {
+            if (dest > 7) return TVM_SIGNAL_ILLEGAL;
+            int32_t a = (int32_t)(int16_t)regs[dest], b = (int32_t)(int16_t)src;
+            int32_t result = a - b;
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~(TVM_ZERO_FLAG_BIT | TVM_CARRY_FLAG_BIT | TVM_SIGN_FLAG_BIT | TVM_OVERFLOW_FLAG_BIT)) |
+                ((result == 0) ? TVM_ZERO_FLAG_BIT : 0) |
+                ((a < b) ? TVM_CARRY_FLAG_BIT : 0) |
+                ((result < -32768 || result > 32767) ? TVM_OVERFLOW_FLAG_BIT : 0) |
+                ((result < 0) ? TVM_SIGN_FLAG_BIT : 0);
+            break;
+        }
+        case 2: {
+            if (dest > 7 || src > 7) return TVM_SIGNAL_ILLEGAL;
+            int32_t a = (int32_t)(int16_t)regs[dest], b = (int32_t)(int16_t)TVM_READ_U16_LENDIAN(memory + regs[src]);
+            int32_t result = a - b;
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~(TVM_ZERO_FLAG_BIT | TVM_CARRY_FLAG_BIT | TVM_SIGN_FLAG_BIT | TVM_OVERFLOW_FLAG_BIT)) |
+                ((result == 0) ? TVM_ZERO_FLAG_BIT : 0) |
+                ((a < b) ? TVM_CARRY_FLAG_BIT : 0) |
+                ((result < -32768 || result > 32767) ? TVM_OVERFLOW_FLAG_BIT : 0) |
+                ((result < 0) ? TVM_SIGN_FLAG_BIT : 0);
+            break;
+        }
+        case 3: {
+            if (dest > 7) return TVM_SIGNAL_ILLEGAL;
+            int32_t a = (int32_t)(int16_t)regs[dest], b = (int32_t)(int16_t)TVM_READ_U16_LENDIAN(memory + src);
+            int32_t result = a - b;
+            regs[TVM_REGID_FL] = (regs[TVM_REGID_FL] & ~(TVM_ZERO_FLAG_BIT | TVM_CARRY_FLAG_BIT | TVM_SIGN_FLAG_BIT | TVM_OVERFLOW_FLAG_BIT)) |
+                ((result == 0) ? TVM_ZERO_FLAG_BIT : 0) |
+                ((a < b) ? TVM_CARRY_FLAG_BIT : 0) |
+                ((result < -32768 || result > 32767) ? TVM_OVERFLOW_FLAG_BIT : 0) |
+                ((result < 0) ? TVM_SIGN_FLAG_BIT : 0);
+            break;
+        }
+
+        default:
+            return TVM_SIGNAL_ILLEGAL;
+    }
+
+    return TVM_SIGNAL_PROCEED;
+}

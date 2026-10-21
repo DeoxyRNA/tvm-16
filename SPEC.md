@@ -624,7 +624,6 @@ Stores the result in the destination.
 | Flag | Condition |
 | :- | :- |
 | `ZF` | Result = `0` |
-| `CF` | Operation produced a carry |
 | `SF` | Result < `0` |
 | `OF` | Signed overflow occurred |
 
@@ -674,7 +673,6 @@ Stores the result in the destination.
 | Flag | Condition |
 | :- | :- |
 | `ZF` | Result = `0` |
-| `CF` | Operation produced a borrow |
 | `SF` | Result < `0`|
 | `OF` | Signed overflow or underflow occurred |
 

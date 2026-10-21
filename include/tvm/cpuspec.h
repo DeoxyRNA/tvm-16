@@ -62,6 +62,16 @@
 
 #define TVM_ADDRESS_SPACE_WIDTH     65536u // 64 KiB
 
+#pragma pack(push, 1)
+/// @brief Represents a TVM-16 CPU instruction.
+typedef struct TVM_Instruction {
+    uint8_t variant;
+    uint8_t opcode;
+    uint16_t dest;
+    uint16_t src;
+} TVM_Instruction;
+#pragma pack(pop, 1)
+
 extern uint16_t regs[];
 extern uint8_t memory[];
 
