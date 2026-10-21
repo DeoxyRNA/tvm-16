@@ -55,10 +55,10 @@ The CPU has eight 16-bit registers. Registers provide the intermediary between t
 
 At program start:
 
-- `PC` is initialized to `0xA000`.
-- `BP` is initialized to `0x9FFF`.
+- `PC` is initialized to `0x8000`.
+- `BP` is initialized to `0x7FFF`.
 - Command-line arguments are pushed onto the stack before execution begins.
-- `SP` is initialized to the top of the stack **after** the command-line arguments have been pushed. With no arguments, `SP` equals `BP` (`0x9FFF`).
+- `SP` is initialized to the top of the stack **after** the command-line arguments have been pushed. With no arguments, `SP` equals `BP` (`0x7FFF`).
 - `R0`, `R1`, `R2`, `R3`, and `FL` are initialized to `0x0000`.
 
 `SP` always points at the most recently pushed value. A push first decrements `SP` by the size of the value and then writes the value at the new `SP`; a pop reads the value at `SP` and then increments `SP`. The stack-frame offsets in [Calling Convention](#calling-convention) depend on this behavior.
@@ -257,7 +257,7 @@ Store instructions (`STW`, `STB`) are the exception: their destination operand i
 
 ### Segments
 
-Programs contain four segments. STATIC starts at `0x0000` and DATA follows it. The stack occupies the region ending at `0x9FFF`, and CODE starts at `0xA000`. The region between DATA and the stack is unreserved; if the stack grows past it, it overwrites DATA or STATIC.
+Programs contain four segments. STATIC starts at `0x0000` and DATA follows it. The stack occupies the region ending at `0x7FFF`, and CODE starts at `0x8000`. The region between DATA and the stack is unreserved; if the stack grows past it, it overwrites DATA or STATIC.
 
 ```
 0x0000 ┌───────────────────────────────┐
@@ -271,9 +271,13 @@ Programs contain four segments. STATIC starts at `0x0000` and DATA follows it. T
        ├───────────────────────────────┤
        │ STACK: frames and arguments   │
        │ grows toward lower addresses  │
-0x9FFF ├───────────────────────────────┤
-0xA000 │ CODE: executable instructions │
+0x7FFF ├───────────────────────────────┤
+0x8000 │ CODE: executable instructions │
        │ grows toward higher addresses │
+       │                               │
+       │                               │
+       │                               │
+       │                               │
 0xFFFF └───────────────────────────────┘
 ```
 
@@ -356,7 +360,7 @@ The executable file would look like this (translated to hexadecimal for readabil
 00 01 03 02 00 00 00
 ```
 
-When the program is loaded into memory, the CPU reads the first 4 bytes to verify that the file is a valid TVM-16 executable. It then reads the next 2 bytes to determine the size of the STATIC segment, and the following 2 bytes to determine the size of the DATA segment. The CPU then initializes the DATA segment with the values provided in the executable file, and finally loads the CODE segment into memory starting at address `0xA000`. The CPU then sets `PC` to `0xA000` and begins executing instructions.
+When the program is loaded into memory, the CPU reads the first 4 bytes to verify that the file is a valid TVM-16 executable. It then reads the next 2 bytes to determine the size of the STATIC segment, and the following 2 bytes to determine the size of the DATA segment. The CPU then initializes the DATA segment with the values provided in the executable file, and finally loads the CODE segment into memory starting at address `0x8000`. The CPU then sets `PC` to `0x8000` and begins executing instructions.
 
 ## Instruction Set
 

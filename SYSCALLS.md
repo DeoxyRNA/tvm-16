@@ -1,6 +1,6 @@
 ## TVM-16 Official System Call Table
 
-The system calls supported by the official TVM-16 runtime environment are as follows:
+The system calls supported by the official TVM-16 runtime environment:
 
 ### Standard Input/Output
 The following system calls are used for reading from and writing to files, as well as managing file descriptors. The system supports files up to 64 KiB in size. 

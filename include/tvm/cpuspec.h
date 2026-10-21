@@ -1,5 +1,5 @@
-#if !defined(INCLUDE_TVM_CPUSPEC_H)
-#define INCLUDE_TVM_CPUSPEC_H
+#if !defined(INCLUDE_VM_CPUSPEC_H)
+#define INCLUDE_VM_CPUSPEC_H
 
 #include <stdint.h>
 
@@ -21,6 +21,10 @@
 #define TVM_SIGNAL_ILLEGAL          1 // Illegal instruction signal
 #define TVM_SIGNAL_SYSCALL          2 // Syscall signal
 #define TVM_SIGNAL_HALT             3 // Halt signal
+
+#define TVM_CODE_SEGMENT_SIZE       0x8000u
+#define TVM_CODE_SEGMENT_OFFSET     0x8000u
+#define TVM_STACK_SEGMENT_OFFSET    0x7FFFu
 
 #define TVM_OPCODE_NOP              ((uint8_t)(0x00)) // 0x00 - No Operation
 #define TVM_OPCODE_LDW              ((uint8_t)(0x01)) // 0x01 - Load Word
@@ -60,7 +64,7 @@
 #define TVM_OPCODE_CPS              ((uint8_t)(0x23)) // 0x23 - Compare Signed
 #define TVM_NUM_OPCODES             35
 
-#define TVM_ADDRESS_SPACE_WIDTH     65536u // 64 KiB
+#define TVM_ADDRESS_SPACE_WIDTH     0xFFFFu // 64 KiB
 
 #pragma pack(push, 1)
 /// @brief Represents a TVM-16 CPU instruction.
@@ -75,4 +79,4 @@ typedef struct TVM_Instruction {
 extern uint16_t regs[];
 extern uint8_t memory[];
 
-#endif // INCLUDE_TVM_CPUSPEC_H
+#endif // INCLUDE_VM_CPUSPEC_H
