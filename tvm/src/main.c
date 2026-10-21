@@ -5,7 +5,7 @@
 int main(int argc, char** argv) {
     (void)argc;
 
-    const char* path = "file.tvm";
+    const char* path = argv[0];
     if (tvmLoadExecutable(path) != EXIT_SUCCESS) {
         return EXIT_FAILURE;
     }

@@ -89,7 +89,7 @@ Suspends the current process for a specified number of milliseconds (resolution 
 
 ### Utility Functions
 
-#### `0x08`: Get Time
+#### `0x08`: Time
 Retrieves the current Unix Timestamp (seconds since January 1, 1970).
 | Register | Use |
 |---|---|

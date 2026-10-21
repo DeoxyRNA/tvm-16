@@ -16,8 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <tvm/cpuspec.h>
-
+#include <tvm/cpu_spec.h>
 #include "vm.h"
 
 static void* createReadonlyFileView(const char* restrict filename, uint64_t* restrict size, uint64_t* restrict error) {

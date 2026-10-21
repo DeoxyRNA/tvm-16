@@ -2,8 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <tvm/cpuprocs.h>
-#include <tvm/cpuspec.h>
+#include <tvm/cpu_procs.h>
+#include <tvm/cpu_spec.h>
+#include <tvm/env.h>
 
 #include "vm.h"
 
@@ -57,8 +58,10 @@ int tvmRun(char** argv) {
     TVM_WRITE_U16_LENDIAN(regs + TVM_REGID_PC, TVM_CODE_SEGMENT_OFFSET);
     TVM_WRITE_U16_LENDIAN(regs + TVM_REGID_BP, TVM_STACK_SEGMENT_OFFSET);
     TVM_WRITE_U16_LENDIAN(regs + TVM_REGID_SP, regs[TVM_REGID_BP]);
-
-    for (size_t i = 0; argv[i] != NULL; i++) {
+    
+    // push command line arguments onto the stack
+    // start at 1 to ignore the program name
+    for (size_t i = 1; argv[i] != NULL; i++) {
         for (size_t j = 0; argv[i][j] != 0; j++) {
             tvmInstrProc_PSB(1, (uint8_t)argv[i][j], 0);
         }
@@ -78,15 +81,12 @@ int tvmRun(char** argv) {
                     TVM_READ_U16_LENDIAN(regs + TVM_REGID_PC) + sizeof(TVM_Instruction)
                 );
                 break;
-
             case TVM_SIGNAL_HALT:
                 programRunning = 0;
                 break;
-
             case TVM_SIGNAL_SYSCALL:
                 // ... will implement syscalls later
                 break;
-
             case TVM_SIGNAL_ILLEGAL:
                 fprintf(stderr, "error: illegal instruction at 0x%04X\n", TVM_READ_U16_LENDIAN(regs + TVM_REGID_PC));
                 programRunning = 0;

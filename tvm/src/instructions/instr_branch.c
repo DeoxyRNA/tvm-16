@@ -1,5 +1,5 @@
-#include <tvm/cpuprocs.h>
-#include <tvm/cpuspec.h>
+#include <tvm/cpu_procs.h>
+#include <tvm/cpu_spec.h>
 
 int tvmInstrProc_BRC(uint8_t variant, uint16_t dest, uint16_t src) {
     switch (variant) {
