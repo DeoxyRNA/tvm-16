@@ -12,5 +12,10 @@ Compiling a program:
 
 ```bash
 # outputs binary 'hello.tvm'
-tasm hello.s -o hello.tvm --verbose
+tasm hello.s -o hello.tvm
+```
+
+Running a program:
+```bash
+tvm hello.tvm
 ```
