@@ -1,7 +1,5 @@
 #if defined(_WIN32)
-    #include <winbase.h>
-    #include <fileapi.h>
-    #include <memoryapi.h>
+    #include <windows.h>
 #elif defined(__unix__) || defined(__APPLE__)
     #include <unistd.h>
     #include <sys/mman.h>

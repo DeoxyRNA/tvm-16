@@ -7,9 +7,11 @@
 #include <tvm/env.h>
 
 #include "vm.h"
+#include "sys.h"
 
 uint16_t regs[8];
 uint8_t memory[TVM_ADDRESS_SPACE_WIDTH];
+uint16_t exitCode = 0;
 
 static TVM_InstructionProc instrProcs[TVM_NUM_OPCODES];
 
@@ -68,29 +70,28 @@ int tvmRun(char** argv) {
     }
 
     int programRunning = 1;
-    int exitCode = 0;
+    int signal = TVM_SIGNAL_PROCEED;
     while (programRunning) {
-        TVM_Instruction nextInstr;
-        memcpy(&nextInstr, memory + TVM_READ_U16_LENDIAN(regs + TVM_REGID_PC), sizeof(TVM_Instruction));
-        int signal = instrProcs[nextInstr.opcode](nextInstr.variant, nextInstr.dest, nextInstr.src);
-
         switch (signal) {
             case TVM_SIGNAL_PROCEED:
-                TVM_WRITE_U16_LENDIAN(
-                    regs + TVM_REGID_PC,
-                    TVM_READ_U16_LENDIAN(regs + TVM_REGID_PC) + sizeof(TVM_Instruction)
-                );
+                TVM_Instruction nextInstr;
+                memcpy(&nextInstr, memory + TVM_READ_U16_LENDIAN(regs + TVM_REGID_PC), sizeof(TVM_Instruction));
+                signal = instrProcs[nextInstr.opcode](nextInstr.variant, nextInstr.dest, nextInstr.src);
+                break;
+            case TVM_SIGNAL_SYSCALL:
+                signal = tvmExecuteSyscall(TVM_READ_U16_LENDIAN(regs + TVM_REGID_R0));
                 break;
             case TVM_SIGNAL_HALT:
                 programRunning = 0;
                 break;
-            case TVM_SIGNAL_SYSCALL:
-                // ... will implement syscalls later
-                break;
             case TVM_SIGNAL_ILLEGAL:
-                fprintf(stderr, "error: illegal instruction at 0x%04X\n", TVM_READ_U16_LENDIAN(regs + TVM_REGID_PC));
-                programRunning = 0;
-                exitCode = EXIT_FAILURE;
+                exitCode = 0xFFFF;
+                fprintf(stderr, "fatal exception: illegal instruction at 0x%X", TVM_READ_U16_LENDIAN(regs + TVM_REGID_PC));
+                break;
+            
+            default:
+                exitCode = 0xFFFE;
+                fprintf(stderr, "fatal exception: unrecognized signal 0x%X", signal);
                 break;
         }
     }

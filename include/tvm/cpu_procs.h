@@ -1,5 +1,5 @@
-#if !defined(INCLUDE_VM_CPUPROCS_H)
-#define INCLUDE_VM_CPUPROCS_H
+#if !defined(INCLUDE_CPUPROCS_H)
+#define INCLUDE_CPUPROCS_H
 
 #include <stdint.h>
 
@@ -85,4 +85,4 @@ inline int tvmInstrProc_SHR(uint8_t variant, uint16_t dest, uint16_t src); // 0x
 inline int tvmInstrProc_CMP(uint8_t variant, uint16_t dest, uint16_t src); // 0x22 - Compare
 inline int tvmInstrProc_CPS(uint8_t variant, uint16_t dest, uint16_t src); // 0x23 - Compare Signed
 
-#endif // INCLUDE_VM_CPUPROCS_H
+#endif // INCLUDE_CPUPROCS_H

@@ -1,4 +1,4 @@
-#ifndef TVM_SRC_VM_H
+#if !defined(TVM_SRC_VM_H)
 #define TVM_SRC_VM_H
 
 /// @brief Loads the specified TVM-16 executable into memory.
