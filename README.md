@@ -8,13 +8,6 @@ Download one of the official binaries or build from source using CMake.
 
 ## Usage
 
-Compiling a program:
-
-```bash
-# outputs binary 'hello.tvm'
-tasm hello.s -o hello.tvm
-```
-
 Running a program:
 ```bash
 tvm hello.tvm
