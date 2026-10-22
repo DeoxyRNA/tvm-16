@@ -1,11 +1,15 @@
 #include <stdlib.h>
+#include <stdio.h>
 
 #include "vm.h"
 
 int main(int argc, char** argv) {
-    (void)argc;
+    if (argc < 2) {
+        fprintf(stderr, "Usage: %s <executable> [args...]\n", argv[0]);
+        return EXIT_FAILURE;
+    }
 
-    const char* path = argv[0];
+    const char* path = argv[1];
     if (tvmLoadExecutable(path) != EXIT_SUCCESS) {
         return EXIT_FAILURE;
     }

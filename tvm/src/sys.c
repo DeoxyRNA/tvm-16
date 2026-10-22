@@ -21,6 +21,7 @@ int tvmLoadSyscallProcs() {
     syscallProcs[TVM_SYSCALL_TIME] = tvmSyscallProc_TIME;
     syscallProcs[TVM_SYSCALL_SRAND] = tvmSyscallProc_SRAND;
     syscallProcs[TVM_SYSCALL_RAND] = tvmSyscallProc_RAND;
+    return EXIT_SUCCESS;
 }
 
 int tvmExecuteSyscall(uint8_t syscallNum) {

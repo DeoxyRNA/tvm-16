@@ -74,7 +74,7 @@ typedef struct TVM_Instruction {
     uint16_t dest;
     uint16_t src;
 } TVM_Instruction;
-#pragma pack(pop, 1)
+#pragma pack(pop)
 
 extern uint16_t regs[];
 extern uint8_t memory[];

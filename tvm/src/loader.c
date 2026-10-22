@@ -142,9 +142,7 @@ int tvmLoadExecutable(const char* path) {
             fprintf(stderr, "error: at '%s', no such file exists\n", path);
         }
 #endif
-        else if (fileSize == 0) {
-            fprintf(stderr, "error: file at '%s' contains no data\n", path);
-        } else {
+        else {
             fprintf(stderr, "error: could not access file '%s'\n", path);
         }
 
@@ -175,7 +173,7 @@ int tvmLoadExecutable(const char* path) {
     memcpy(&staticSize, fileBytes + 4, sizeof(staticSize));
     memcpy(&dataSize, fileBytes + 6, sizeof(dataSize));
 
-    uint32_t codeOffset = (uint32_t)staticSize + dataSize;
+    uint32_t codeOffset = 8u + (uint32_t)staticSize + (uint32_t)dataSize;
     if (codeOffset > fileSize) {
         fprintf(stderr, "error: input must be a valid TVM-16 executable\n");
         destroyReadonlyFileView(fileView, fileSize);

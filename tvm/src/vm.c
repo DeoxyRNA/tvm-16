@@ -56,6 +56,9 @@ static void loadInstrProcs(void) {
 
 int tvmRun(char** argv) {
     loadInstrProcs();
+    if (tvmLoadSyscallProcs() != EXIT_SUCCESS) {
+        return EXIT_FAILURE;
+    }
 
     TVM_WRITE_U16_LENDIAN(regs + TVM_REGID_PC, TVM_CODE_SEGMENT_OFFSET);
     TVM_WRITE_U16_LENDIAN(regs + TVM_REGID_BP, TVM_STACK_SEGMENT_OFFSET);
@@ -71,11 +74,18 @@ int tvmRun(char** argv) {
 
     int programRunning = 1;
     int signal = TVM_SIGNAL_PROCEED;
+    uint16_t instructionAddress = 0;
     while (programRunning) {
         switch (signal) {
             case TVM_SIGNAL_PROCEED:
                 TVM_Instruction nextInstr;
-                memcpy(&nextInstr, memory + TVM_READ_U16_LENDIAN(regs + TVM_REGID_PC), sizeof(TVM_Instruction));
+                instructionAddress = TVM_READ_U16_LENDIAN(regs + TVM_REGID_PC);
+                memcpy(&nextInstr, memory + instructionAddress, sizeof(TVM_Instruction));
+                TVM_WRITE_U16_LENDIAN(regs + TVM_REGID_PC, instructionAddress + sizeof(TVM_Instruction));
+                if (nextInstr.opcode >= TVM_NUM_OPCODES || instrProcs[nextInstr.opcode] == NULL) {
+                    signal = TVM_SIGNAL_ILLEGAL;
+                    break;
+                }
                 signal = instrProcs[nextInstr.opcode](nextInstr.variant, nextInstr.dest, nextInstr.src);
                 break;
             case TVM_SIGNAL_SYSCALL:
@@ -86,12 +96,14 @@ int tvmRun(char** argv) {
                 break;
             case TVM_SIGNAL_ILLEGAL:
                 exitCode = 0xFFFF;
-                fprintf(stderr, "fatal exception: illegal instruction at 0x%X", TVM_READ_U16_LENDIAN(regs + TVM_REGID_PC));
+                fprintf(stderr, "fatal exception: illegal instruction at 0x%X", instructionAddress);
+                programRunning = 0;
                 break;
             
             default:
                 exitCode = 0xFFFE;
                 fprintf(stderr, "fatal exception: unrecognized signal 0x%X", signal);
+                programRunning = 0;
                 break;
         }
     }

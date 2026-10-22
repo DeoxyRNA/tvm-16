@@ -53,6 +53,7 @@ Updates the seed of the system's random number generator.
 |---|---|
 | `R1` | in: low word of the new seed |
 | `R2` | in: high word of the new seed |
+***
 
 #### `0x06`: Random
 Generates a random word using the system's random number generator.

@@ -7,6 +7,7 @@ PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/vm.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/loader.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/sys.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/syscalls.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/instructions/instr_control.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/instructions/instr_branch.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/instructions/instr_alu.c
