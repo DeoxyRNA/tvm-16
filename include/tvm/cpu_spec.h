@@ -78,5 +78,6 @@ typedef struct TVM_Instruction {
 
 extern uint16_t regs[];
 extern uint8_t memory[];
+extern uint16_t exitCode;
 
-#endif // INCLUDE_VM_CPUSPEC_H
+#endif // INCLUDE_CPUSPEC_H
