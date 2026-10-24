@@ -1,6 +1,16 @@
+#if defined(_WIN32)
+    #include <windows.h>
+#else
+    #include <unistd.h>
+    #include <sys/stat.h>
+    #include <fcntl.h>
+    #include <errno.h>
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include <tvm/cpu_procs.h>
 #include <tvm/cpu_spec.h>
@@ -14,6 +24,53 @@ uint8_t memory[TVM_ADDRESS_SPACE_WIDTH];
 uint16_t exitCode = 0;
 
 static TVM_InstructionProc instrProcs[TVM_NUM_OPCODES];
+
+static int performCoreDump(void) {
+#if defined(_WIN32)
+    // ...
+    return EXIT_FAILURE;
+#else
+char filename[256];
+
+    time_t timestamp = time(NULL);
+    struct tm timeinfo;
+    if (localtime_r(&timestamp, &timeinfo) == NULL) {
+        return EXIT_FAILURE;
+    }
+
+    if (strftime(filename, sizeof(filename), "dump_%Y%m%d_%H%M%S.bin", &timeinfo) == 0) {
+        return EXIT_FAILURE;
+    }
+
+    int fileDesc = open(filename, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+    if (fileDesc == -1) {
+        return EXIT_FAILURE;
+    }
+
+    const char *buffer = (const char *)memory;
+    size_t totalWritten = 0;
+    
+    while (totalWritten < TVM_ADDRESS_SPACE_WIDTH) {
+        ssize_t bytesWritten = write(fileDesc, 
+                                     buffer + totalWritten, 
+                                     TVM_ADDRESS_SPACE_WIDTH - totalWritten);
+        if (bytesWritten <= 0) {
+            if (bytesWritten == -1 && errno == EINTR) {
+                continue;
+            }
+
+            close(fileDesc);
+            remove(filename);
+            return EXIT_FAILURE;
+        }
+
+        totalWritten += (size_t)bytesWritten;
+    }
+
+    close(fileDesc);
+    return EXIT_SUCCESS;
+#endif
+}
 
 static void loadInstrProcs(void) {
     instrProcs[TVM_OPCODE_NOP] = tvmInstrProc_NOP;
@@ -96,13 +153,15 @@ int tvmRun(char** argv) {
                 break;
             case TVM_SIGNAL_ILLEGAL:
                 exitCode = 0xFFFF;
-                fprintf(stderr, "fatal exception: illegal instruction at 0x%X", instructionAddress);
+                performCoreDump();
+                fprintf(stderr, "fatal exception: 0x%X illegal instruction (core dumped)\n", instructionAddress);
                 programRunning = 0;
                 break;
             
             default:
                 exitCode = 0xFFFE;
-                fprintf(stderr, "fatal exception: unrecognized signal 0x%X", signal);
+                performCoreDump();
+                fprintf(stderr, "fatal exception: 0x%X unrecognized signal (core dumped)\n", signal);
                 programRunning = 0;
                 break;
         }
