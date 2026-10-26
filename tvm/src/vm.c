@@ -108,6 +108,6 @@ int tvmRun(char** argv) {
         }
     }
 
-    fprintf(stdout, "program halted with code %d\n", exitCode);
+    fprintf(stdout, "%s: program halted with code %d\n", INVOCATION_NAME, exitCode);
     return EXIT_SUCCESS;
 }

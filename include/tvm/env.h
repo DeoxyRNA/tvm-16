@@ -10,6 +10,8 @@
 #define TVM_SYSCALL_RAND        ((uint8_t)(0x06)) // 0x06 - Random
 #define TVM_NUM_SYSCALLS        7
 
+extern const char* INVOCATION_NAME;
+
 inline int tvmSyscallProc_READ(); // 0x00 - Read
 inline int tvmSyscallProc_WRITE(); // 0x01 - Write
 inline int tvmSyscallProc_EXIT(); // 0x02 - Exit

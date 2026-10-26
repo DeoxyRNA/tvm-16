@@ -1,5 +1,3 @@
-project(TVM-16)
-
 add_executable(tvm)
 target_sources(tvm
 PRIVATE
@@ -15,5 +13,7 @@ PRIVATE
 
 target_include_directories(tvm
 PUBLIC
-    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_LIST_DIR}/../include
+PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/src
 )

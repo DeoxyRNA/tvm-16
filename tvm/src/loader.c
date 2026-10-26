@@ -15,7 +15,14 @@
 #include <string.h>
 
 #include <tvm/cpu_spec.h>
+#include <tvm/cpu_procs.h>
+#include <tvm/env.h>
 #include "vm.h"
+
+static const char* INVALID_FORMAT_MSG = "%s: fatal error: input file must be a valid TVM-16 executable\n";
+static const char* FILE_TOO_LARGE_MSG = "%s: fatal error: input file too large! (max 64 KiB)\n";
+static const char* FILE_NOT_FOUND_MSG = "%s: cannot find %s: No such file or directory\n";
+static const char* PERMISSION_DENIED_MSG = "%s: cannot open %s: Permission denied\n";
 
 static void* createReadonlyFileView(const char* restrict filename, uint64_t* restrict size, uint64_t* restrict error) {
 #if defined(_WIN32)
@@ -135,59 +142,71 @@ int tvmLoadExecutable(const char* path) {
     if (fileView == NULL) {
 #if defined(_WIN32)
         if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND) {
-            fprintf(stderr, "error: at '%s', no such file exists\n", path);
+            fprintf(stderr, FILE_NOT_FOUND_MSG, INVOCATION_NAME, path);
         }
 #else
         if (error == ENOENT || error == ENOTDIR) {
-            fprintf(stderr, "error: at '%s', no such file exists\n", path);
+            fprintf(stderr, FILE_NOT_FOUND_MSG, INVOCATION_NAME, path);
         }
 #endif
-        else {
-            fprintf(stderr, "error: could not access file '%s'\n", path);
+        else if (fileSize == 0) {
+            fprintf(stderr, INVALID_FORMAT_MSG, INVOCATION_NAME, path);
+        } else {
+            fprintf(stderr, PERMISSION_DENIED_MSG, INVOCATION_NAME, path);
         }
 
         return EXIT_FAILURE;
     }
 
     if (fileSize > 65536u) {
-        fprintf(stderr, "error: file too large! (max 64 KiB)\n");
+        fprintf(stderr, FILE_TOO_LARGE_MSG, INVOCATION_NAME, path);
         destroyReadonlyFileView(fileView, fileSize);
         return EXIT_FAILURE;
     }
 
     if (fileSize < 8) {
-        fprintf(stderr, "error: input must be a valid TVM-16 executable\n");
+        fprintf(stderr, INVALID_FORMAT_MSG, INVOCATION_NAME, path);
         destroyReadonlyFileView(fileView, fileSize);
         return EXIT_FAILURE;
     }
 
     const uint8_t* fileBytes = fileView;
     if (memcmp(fileBytes, "pTVM", 4) != 0) {
-        fprintf(stderr, "error: input must be a valid TVM-16 executable\n");
+        fprintf(stderr, INVALID_FORMAT_MSG, INVOCATION_NAME, path);
         destroyReadonlyFileView(fileView, fileSize);
         return EXIT_FAILURE;
     }
 
-    uint16_t staticSize;
-    uint16_t dataSize;
-    memcpy(&staticSize, fileBytes + 4, sizeof(staticSize));
-    memcpy(&dataSize, fileBytes + 6, sizeof(dataSize));
+    uint16_t inputOffset = 4; // skip the magic number
+    uint16_t outputOffset = 0;
 
-    uint32_t codeOffset = 8u + (uint32_t)staticSize + (uint32_t)dataSize;
-    if (codeOffset > fileSize) {
-        fprintf(stderr, "error: input must be a valid TVM-16 executable\n");
+    uint16_t staticSegmentSize = TVM_READ_U16_LENDIAN(fileBytes + inputOffset);
+    inputOffset += 2;
+    uint16_t dataSegmentSize = TVM_READ_U16_LENDIAN(fileBytes + inputOffset);
+    inputOffset += 2;
+
+    // allocate bytes for static segment
+    outputOffset += staticSegmentSize;
+
+    if (outputOffset + dataSegmentSize > fileSize) {
+        fprintf(stderr, INVALID_FORMAT_MSG, INVOCATION_NAME, path);
         destroyReadonlyFileView(fileView, fileSize);
         return EXIT_FAILURE;
     }
 
-    uint32_t codeSize = (uint32_t)fileSize - codeOffset;
-    if (codeSize > TVM_CODE_SEGMENT_SIZE) {
-        fprintf(stderr, "error: program code too large! (max 32 KiB)\n");
-        destroyReadonlyFileView(fileView, fileSize);
-        return EXIT_FAILURE;
-    }
+    // copy data segment from input file to memory
+    memcpy(memory + outputOffset, fileBytes + inputOffset, dataSegmentSize);
+    outputOffset += dataSegmentSize;
 
-    memcpy(memory + TVM_CODE_SEGMENT_OFFSET, fileBytes + codeOffset, codeSize);
+    outputOffset = TVM_CODE_SEGMENT_OFFSET;
+    inputOffset += dataSegmentSize;
+
+    uint16_t codeSegmentSize = fileSize - inputOffset;
+
+    // copy code segment from input file to memory
+    memcpy(memory + outputOffset, fileBytes + inputOffset, codeSegmentSize);
+
     destroyReadonlyFileView(fileView, fileSize);
+
     return EXIT_SUCCESS;
 }

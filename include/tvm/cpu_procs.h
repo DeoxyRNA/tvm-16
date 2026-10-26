@@ -1,6 +1,10 @@
 #if !defined(INCLUDE_CPUPROCS_H)
 #define INCLUDE_CPUPROCS_H
 
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
 #include <stdint.h>
 
 /// @brief Reads a 16-bit unsigned integer from a memory location in little-endian format.
@@ -84,5 +88,9 @@ inline int tvmInstrProc_SHL(uint8_t variant, uint16_t dest, uint16_t src); // 0x
 inline int tvmInstrProc_SHR(uint8_t variant, uint16_t dest, uint16_t src); // 0x21 - Bitwise Shift Right
 inline int tvmInstrProc_CMP(uint8_t variant, uint16_t dest, uint16_t src); // 0x22 - Compare
 inline int tvmInstrProc_CPS(uint8_t variant, uint16_t dest, uint16_t src); // 0x23 - Compare Signed
+
+#if defined(__cplusplus)
+}
+#endif
 
 #endif // INCLUDE_CPUPROCS_H
