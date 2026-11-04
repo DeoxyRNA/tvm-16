@@ -178,19 +178,19 @@ int tvmRun(char** argv) {
             case TVM_SIGNAL_ILLEGAL:
                 exitCode = 0xFFFF;
                 performCoreDump();
-                fprintf(stderr, "fatal exception: 0x%X illegal instruction (core dumped)\n", instructionAddress);
+                fprintf(stderr, "tvm: fatal exception: 0x%X illegal instruction (core dumped)\n", instructionAddress);
                 programRunning = 0;
                 break;
             
             default:
                 exitCode = 0xFFFE;
                 performCoreDump();
-                fprintf(stderr, "fatal exception: 0x%X unrecognized signal (core dumped)\n", signal);
+                fprintf(stderr, "tvm: fatal exception: 0x%X unrecognized signal (core dumped)\n", signal);
                 programRunning = 0;
                 break;
         }
     }
 
-    fprintf(stdout, "program halted with code %d\n", exitCode);
+    fprintf(stdout, "tvm: program halted with code %d\n", exitCode);
     return EXIT_SUCCESS;
 }

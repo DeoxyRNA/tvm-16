@@ -1,10 +1,12 @@
 # standard "Hello, World!"
 
+SEGMENT DATA:
+    DFB msg, "Hello, World!\n"
+
 SEGMENT CODE:
 main:
-    STB 0x2000, "Hello, World!\n"
     LDW R0, 1
-    LDW R1, 0x2000
+    LDW R1, msg
     LDW R2, 14
     SYS
     HLT

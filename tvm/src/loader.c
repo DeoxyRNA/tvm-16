@@ -187,6 +187,7 @@ int tvmLoadExecutable(const char* path) {
         return EXIT_FAILURE;
     }
 
+    memcpy(memory + staticSize, fileBytes + 8, dataSize);
     memcpy(memory + TVM_CODE_SEGMENT_OFFSET, fileBytes + codeOffset, codeSize);
     destroyReadonlyFileView(fileView, fileSize);
     return EXIT_SUCCESS;
