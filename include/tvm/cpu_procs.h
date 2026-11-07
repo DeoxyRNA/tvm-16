@@ -48,41 +48,41 @@
 /// @param src The instruction's source operand.
 typedef int (*TVM_InstructionProc)(uint8_t variant, uint16_t dest, uint16_t src);
 
-inline int tvmInstrProc_NOP(uint8_t variant, uint16_t dest, uint16_t src); // 0x00 - No Operation
-inline int tvmInstrProc_LDW(uint8_t variant, uint16_t dest, uint16_t src); // 0x01 - Load Word
-inline int tvmInstrProc_LDB(uint8_t variant, uint16_t dest, uint16_t src); // 0x02 - Load Byte
-inline int tvmInstrProc_STW(uint8_t variant, uint16_t dest, uint16_t src); // 0x03 - Store Word
-inline int tvmInstrProc_STB(uint8_t variant, uint16_t dest, uint16_t src); // 0x04 - Store Byte
-inline int tvmInstrProc_PSW(uint8_t variant, uint16_t dest, uint16_t src); // 0x05 - Push Word
-inline int tvmInstrProc_PSB(uint8_t variant, uint16_t dest, uint16_t src); // 0x06 - Push Byte
-inline int tvmInstrProc_PPW(uint8_t variant, uint16_t dest, uint16_t src); // 0x07 - Pop Word
-inline int tvmInstrProc_PPB(uint8_t variant, uint16_t dest, uint16_t src); // 0x08 - Pop Byte
-inline int tvmInstrProc_HLT(uint8_t variant, uint16_t dest, uint16_t src); // 0x09 - Halt
-inline int tvmInstrProc_SYS(uint8_t variant, uint16_t dest, uint16_t src); // 0x0A - System Call
-inline int tvmInstrProc_BRC(uint8_t variant, uint16_t dest, uint16_t src); // 0x0B - Branch
-inline int tvmInstrProc_BEQ(uint8_t variant, uint16_t dest, uint16_t src); // 0x0C - Branch If Equal
-inline int tvmInstrProc_BNE(uint8_t variant, uint16_t dest, uint16_t src); // 0x0D - Branch If Not Equal
-inline int tvmInstrProc_BCA(uint8_t variant, uint16_t dest, uint16_t src); // 0x0E - Branch If Carry
-inline int tvmInstrProc_BNC(uint8_t variant, uint16_t dest, uint16_t src); // 0x0F - Branch If Not Carry
-inline int tvmInstrProc_BMI(uint8_t variant, uint16_t dest, uint16_t src); // 0x10 - Branch If Minus
-inline int tvmInstrProc_BPL(uint8_t variant, uint16_t dest, uint16_t src); // 0x11 - Branch If Plus
-inline int tvmInstrProc_BOV(uint8_t variant, uint16_t dest, uint16_t src); // 0x12 - Branch If Overflow
-inline int tvmInstrProc_BNO(uint8_t variant, uint16_t dest, uint16_t src); // 0x13 - Branch If Not Overflow
-inline int tvmInstrProc_CLL(uint8_t variant, uint16_t dest, uint16_t src); // 0x14 - Call
-inline int tvmInstrProc_RET(uint8_t variant, uint16_t dest, uint16_t src); // 0x15 - Return
-inline int tvmInstrProc_ADD(uint8_t variant, uint16_t dest, uint16_t src); // 0x16 - Add
-inline int tvmInstrProc_ADS(uint8_t variant, uint16_t dest, uint16_t src); // 0x17 - Add Signed 
-inline int tvmInstrProc_ADC(uint8_t variant, uint16_t dest, uint16_t src); // 0x18 - Add With Carry
-inline int tvmInstrProc_SUB(uint8_t variant, uint16_t dest, uint16_t src); // 0x19 - Subtract
-inline int tvmInstrProc_SBS(uint8_t variant, uint16_t dest, uint16_t src); // 0x1A - Subtract Signed 
-inline int tvmInstrProc_SBB(uint8_t variant, uint16_t dest, uint16_t src); // 0x1B - Subtract With Borrow
-inline int tvmInstrProc_AND(uint8_t variant, uint16_t dest, uint16_t src); // 0x1C - Bitwise AND
-inline int tvmInstrProc_IOR(uint8_t variant, uint16_t dest, uint16_t src); // 0x1D - Bitwise Inclusive OR
-inline int tvmInstrProc_XOR(uint8_t variant, uint16_t dest, uint16_t src); // 0x1E - Bitwise Exclusive OR
-inline int tvmInstrProc_NOT(uint8_t variant, uint16_t dest, uint16_t src); // 0x1F - Bitwise NOT
-inline int tvmInstrProc_SHL(uint8_t variant, uint16_t dest, uint16_t src); // 0x20 - Bitwise Shift Left
-inline int tvmInstrProc_SHR(uint8_t variant, uint16_t dest, uint16_t src); // 0x21 - Bitwise Shift Right
-inline int tvmInstrProc_CMP(uint8_t variant, uint16_t dest, uint16_t src); // 0x22 - Compare
-inline int tvmInstrProc_CPS(uint8_t variant, uint16_t dest, uint16_t src); // 0x23 - Compare Signed
+int tvmInstrProc_NOP(uint8_t variant, uint16_t dest, uint16_t src); // 0x00 - No Operation
+int tvmInstrProc_LDW(uint8_t variant, uint16_t dest, uint16_t src); // 0x01 - Load Word
+int tvmInstrProc_LDB(uint8_t variant, uint16_t dest, uint16_t src); // 0x02 - Load Byte
+int tvmInstrProc_STW(uint8_t variant, uint16_t dest, uint16_t src); // 0x03 - Store Word
+int tvmInstrProc_STB(uint8_t variant, uint16_t dest, uint16_t src); // 0x04 - Store Byte
+int tvmInstrProc_PSW(uint8_t variant, uint16_t dest, uint16_t src); // 0x05 - Push Word
+int tvmInstrProc_PSB(uint8_t variant, uint16_t dest, uint16_t src); // 0x06 - Push Byte
+int tvmInstrProc_PPW(uint8_t variant, uint16_t dest, uint16_t src); // 0x07 - Pop Word
+int tvmInstrProc_PPB(uint8_t variant, uint16_t dest, uint16_t src); // 0x08 - Pop Byte
+int tvmInstrProc_HLT(uint8_t variant, uint16_t dest, uint16_t src); // 0x09 - Halt
+int tvmInstrProc_SYS(uint8_t variant, uint16_t dest, uint16_t src); // 0x0A - System Call
+int tvmInstrProc_BRC(uint8_t variant, uint16_t dest, uint16_t src); // 0x0B - Branch
+int tvmInstrProc_BEQ(uint8_t variant, uint16_t dest, uint16_t src); // 0x0C - Branch If Equal
+int tvmInstrProc_BNE(uint8_t variant, uint16_t dest, uint16_t src); // 0x0D - Branch If Not Equal
+int tvmInstrProc_BCA(uint8_t variant, uint16_t dest, uint16_t src); // 0x0E - Branch If Carry
+int tvmInstrProc_BNC(uint8_t variant, uint16_t dest, uint16_t src); // 0x0F - Branch If Not Carry
+int tvmInstrProc_BMI(uint8_t variant, uint16_t dest, uint16_t src); // 0x10 - Branch If Minus
+int tvmInstrProc_BPL(uint8_t variant, uint16_t dest, uint16_t src); // 0x11 - Branch If Plus
+int tvmInstrProc_BOV(uint8_t variant, uint16_t dest, uint16_t src); // 0x12 - Branch If Overflow
+int tvmInstrProc_BNO(uint8_t variant, uint16_t dest, uint16_t src); // 0x13 - Branch If Not Overflow
+int tvmInstrProc_CLL(uint8_t variant, uint16_t dest, uint16_t src); // 0x14 - Call
+int tvmInstrProc_RET(uint8_t variant, uint16_t dest, uint16_t src); // 0x15 - Return
+int tvmInstrProc_ADD(uint8_t variant, uint16_t dest, uint16_t src); // 0x16 - Add
+int tvmInstrProc_ADS(uint8_t variant, uint16_t dest, uint16_t src); // 0x17 - Add Signed 
+int tvmInstrProc_ADC(uint8_t variant, uint16_t dest, uint16_t src); // 0x18 - Add With Carry
+int tvmInstrProc_SUB(uint8_t variant, uint16_t dest, uint16_t src); // 0x19 - Subtract
+int tvmInstrProc_SBS(uint8_t variant, uint16_t dest, uint16_t src); // 0x1A - Subtract Signed 
+int tvmInstrProc_SBB(uint8_t variant, uint16_t dest, uint16_t src); // 0x1B - Subtract With Borrow
+int tvmInstrProc_AND(uint8_t variant, uint16_t dest, uint16_t src); // 0x1C - Bitwise AND
+int tvmInstrProc_IOR(uint8_t variant, uint16_t dest, uint16_t src); // 0x1D - Bitwise Inclusive OR
+int tvmInstrProc_XOR(uint8_t variant, uint16_t dest, uint16_t src); // 0x1E - Bitwise Exclusive OR
+int tvmInstrProc_NOT(uint8_t variant, uint16_t dest, uint16_t src); // 0x1F - Bitwise NOT
+int tvmInstrProc_SHL(uint8_t variant, uint16_t dest, uint16_t src); // 0x20 - Bitwise Shift Left
+int tvmInstrProc_SHR(uint8_t variant, uint16_t dest, uint16_t src); // 0x21 - Bitwise Shift Right
+int tvmInstrProc_CMP(uint8_t variant, uint16_t dest, uint16_t src); // 0x22 - Compare
+int tvmInstrProc_CPS(uint8_t variant, uint16_t dest, uint16_t src); // 0x23 - Compare Signed
 
 #endif // INCLUDE_CPUPROCS_H

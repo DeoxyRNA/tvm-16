@@ -36,7 +36,7 @@ Memory uses little-endian byte order: the low byte is stored at the lower addres
 
 The example above encodes the word `0x3039`.
 
-The stack grows downward (toward lower addresses) from `0x9FFF`. The code segment begins at `0xA000` and grows upward (toward higher addresses). The stack and code segments are adjacent, and because the stack grows away from the code segment, ordinary stack growth should not overwrite program code; a stack that grows too far can only run into the DATA or STATIC segments (see [Segments](#segments)).
+The stack grows downward (toward lower addresses) from `0x7FFF`. The code segment begins at `0x8000` and grows upward (toward higher addresses). The stack and code segments are adjacent, and because the stack grows away from the code segment, ordinary stack growth should not overwrite program code; a stack that grows too far can only run into the DATA or STATIC segments (see [Segments](#segments)).
 
 ### Registers
 
@@ -167,8 +167,6 @@ The conventional epilogue is:
     RET             # pop return address and return
 ```
 
-`R1` holds the multiplicand, and `R2` is the number of additions remaining. The initial `SUB` checks for a zero multiplier because loads do not update the status flags. Repeated addition naturally discards any bits above the low word, so the returned result is truncated to 16 bits.
-
 ## Assembler
 
 TAsm (TVM-16 Assembly) maps machine instructions to human-readable mnemonics.
@@ -267,7 +265,7 @@ Programs contain four segments. STATIC starts at `0x0000` and DATA follows it. T
        │ DATA: initialized values      │
        │ grows toward higher addresses │
        ├───────────────────────────────┤
-       │ unreserved                    │
+       │ heap (unreserved)             │
        ├───────────────────────────────┤
        │ STACK: frames and arguments   │
        │ grows toward lower addresses  │
@@ -324,7 +322,7 @@ main:
     HLT
 ```
 
-#### Executable Space
+### Executable Space
 The variables of the DATA segment are initialized at program start, so their initial values are stored in the program's executable file. The sizes of the both the STATIC and DATA segments must also be stored in the program's executable file, so that the runtime environment knows where to start reading the instructions from when it loads the program into memory.
 
 The executable file format is as follows:
@@ -357,10 +355,23 @@ The executable file would look like this (translated to hexadecimal for readabil
 ```
 70 54 56 4D 0C 00 03 00
 34 12 78 03 01 00 00 00
-00 01 03 02 00 00 00
+00 02 03 02 00 00 00 00
+09 00 00 00 00
 ```
 
 When the program is loaded into memory, the CPU reads the first 4 bytes to verify that the file is a valid TVM-16 executable. It then reads the next 2 bytes to determine the size of the STATIC segment, and the following 2 bytes to determine the size of the DATA segment. The CPU then initializes the DATA segment with the values provided in the executable file, and finally loads the CODE segment into memory starting at address `0x8000`. The CPU then sets `PC` to `0x8000` and begins executing instructions.
+
+### Program Break
+
+The **program break** is the address that marks the beginning of the heap, or the size of the DATA segment plus the size of the STATIC segment.
+
+In the DATA segment, the program break is represented by the dollar sign (`$`). The assembler can evaluate addition (`+`) and subtraction (`-`) expressions with the program break, provided the other operand is a symbol or an immediate value.
+
+```
+SEGMENT DATA:
+    DFB str, "this is a string"
+    ASN len, $ - str                # takes the length of 'str'
+```
 
 ## Instruction Set
 
@@ -496,7 +507,7 @@ These instructions manipulate the sequence of the program's execution.
 
 #### `0x0B`: BRC (Branch)
 Branches to an address.
-`
+
 | Variant | Usage |
 | :- | :- |
 | `0x0` | `BRC [Rn]` |
@@ -821,13 +832,12 @@ Performs a signed comparison on the two operands without modifying either one.
 System calls (abbreviated as "syscalls"), are operations that hand execution of the program over to the runtime environment. They can be used for input/output operations, like printing to the console or reading from a file, or miscellaneous utilities beyond the scope of the base instruction set. System calls are implementation-defined, and will differ depending on the runtime environment you use.
 
 The system call ID is passed to the runtime in `R0`. It may also read in or write back additional data in any of the general-purpose registers (`R0`-`R3`). The exact usage of the registers is defined by the syscall ID. After the arguments are loaded, the program must invoke the syscall by executing the `SYS` instruction.
-For example, a syscall that reads a file might take the file descriptor in `R1`, the buffer address in `R2`, and the number of bytes to read in `R3`. The syscall might then return the number of bytes actually read in `R0`.
+For example, a syscall that reads from the standard input stream into a buffer might take the buffer address in `R1`, and the number of bytes to read in `R2`. The syscall might then return the number of bytes actually read in `R2`.
 ```
-# Example: syscall 0x00 reads from a file descriptor
+# Example: syscall 0x00 reads bytes from stdin into a buffer
 LDW R0, 0
-LDW R1, fd
-LDW R2, buffer
-LDW R3, 0x100
+LDW R1, buffer
+LDW R2, 0x100   # number of bytes to read
 SYS
 ```
 

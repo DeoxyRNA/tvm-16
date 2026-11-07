@@ -14,7 +14,6 @@
 
 #include <tvm/cpu_procs.h>
 #include <tvm/cpu_spec.h>
-#include <tvm/env.h>
 
 #include "vm.h"
 #include "sys.h"
@@ -148,7 +147,7 @@ int tvmRun(char** argv) {
     // push command line arguments onto the stack
     for (size_t i = 1; argv[i] != NULL; i++) {
         size_t len = strlen(argv[i]) + 1;
-        for (size_t j = 0; j < len; j++) {
+        for (size_t j = len; j-- > 0;) {
             tvmInstrProc_PSB(1, (uint8_t)argv[i][j], 0);
         }
     }
