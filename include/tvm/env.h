@@ -10,14 +10,12 @@
 #define TVM_SYSCALL_RAND        ((uint8_t)(0x06)) // 0x06 - Random
 #define TVM_NUM_SYSCALLS        7
 
-extern const char* INVOCATION_NAME;
-
-inline int tvmSyscallProc_READ(); // 0x00 - Read
-inline int tvmSyscallProc_WRITE(); // 0x01 - Write
-inline int tvmSyscallProc_EXIT(); // 0x02 - Exit
-inline int tvmSyscallProc_SLEEP(); // 0x03 - Sleep
-inline int tvmSyscallProc_TIME(); // 0x04 - Time
-inline int tvmSyscallProc_SRAND(); // 0x05 - Seed Random
-inline int tvmSyscallProc_RAND(); // 0x06 - Random
+int tvmSyscallProc_READ(); // 0x00 - Read
+int tvmSyscallProc_WRITE(); // 0x01 - Write
+int tvmSyscallProc_EXIT(); // 0x02 - Exit
+int tvmSyscallProc_SLEEP(); // 0x03 - Sleep
+int tvmSyscallProc_TIME(); // 0x04 - Time
+int tvmSyscallProc_SRAND(); // 0x05 - Seed Random
+int tvmSyscallProc_RAND(); // 0x06 - Random
 
 #endif // INCLUDE_ENV_H

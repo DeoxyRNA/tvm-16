@@ -27,7 +27,7 @@ int tvmSyscallProc_READ() {
 }
 
 int tvmSyscallProc_WRITE() {
-    uint16_t addr = TVM_READ_U16_LENDIAN(memory + TVM_READ_U16_LENDIAN(regs + TVM_REGID_R1));
+    uint16_t addr = TVM_READ_U16_LENDIAN(regs + TVM_REGID_R1);
     uint16_t n = TVM_READ_U16_LENDIAN(regs + TVM_REGID_R2);
 
     uint16_t i;

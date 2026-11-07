@@ -194,18 +194,8 @@ int tvmLoadExecutable(const char* path) {
         return EXIT_FAILURE;
     }
 
-    // copy data segment from input file to memory
-    memcpy(memory + outputOffset, fileBytes + inputOffset, dataSegmentSize);
-    outputOffset += dataSegmentSize;
-
-    outputOffset = TVM_CODE_SEGMENT_OFFSET;
-    inputOffset += dataSegmentSize;
-
-    uint16_t codeSegmentSize = fileSize - inputOffset;
-
-    // copy code segment from input file to memory
-    memcpy(memory + outputOffset, fileBytes + inputOffset, codeSegmentSize);
-
+    memcpy(memory + staticSize, fileBytes + 8, dataSize);
+    memcpy(memory + TVM_CODE_SEGMENT_OFFSET, fileBytes + codeOffset, codeSize);
     destroyReadonlyFileView(fileView, fileSize);
 
     return EXIT_SUCCESS;
