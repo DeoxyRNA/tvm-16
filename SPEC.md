@@ -48,10 +48,14 @@ The CPU has eight 16-bit registers. Registers provide the intermediary between t
 | `R1` | `1` | general purpose; high return word |
 | `R2` | `2` | general purpose |
 | `R3` | `3` | general purpose |
-| `SP` | `4` | stack pointer |
-| `BP` | `5` | base pointer |
-| `PC` | `6` | program counter |
-| `FL` | `7` | status flags |
+| `R4` | `4` | general purpose |
+| `R5` | `5` | general purpose |
+| `R6` | `6` | general purpose |
+| `R7` | `7` | general purpose |
+| `SP` | `8` | stack pointer |
+| `BP` | `9` | base pointer |
+| `PC` | `10` | program counter |
+| `FL` | `11` | status flags |
 
 At program start:
 
@@ -59,11 +63,11 @@ At program start:
 - `BP` is initialized to `0x7FFF`.
 - Command-line arguments are pushed onto the stack before execution begins.
 - `SP` is initialized to the top of the stack **after** the command-line arguments have been pushed. With no arguments, `SP` equals `BP` (`0x7FFF`).
-- `R0`, `R1`, `R2`, `R3`, and `FL` are initialized to `0x0000`.
+- `R0-7` and `FL` are initialized to `0x0000`.
 
 `SP` always points at the most recently pushed value. A push first decrements `SP` by the size of the value and then writes the value at the new `SP`; a pop reads the value at `SP` and then increments `SP`. The stack-frame offsets in [Calling Convention](#calling-convention) depend on this behavior.
 
-Unless control flow changes `PC`, it advances by 6 bytes after each instruction. Execution stops when the program halts.
+After instruction is executed, `PC` will advance by four bytes, unless it branches. Execution stops when the program halts. What happens when `PC` exceeds `0xFFFF` is implementation-defined.
 
 ### Status Flags
 
@@ -76,32 +80,38 @@ The lower four bits of `FL` contain the status flags:
 | `SF` | `0x0004` | signed result is negative |
 | `OF` | `0x0008` | signed overflow or underflow occurred |
 
-The upper 12 bits of `FL` are reserved. Arithmetic and logic instructions update the flags listed in their descriptions and never modify the reserved bits. `FL` is not preserved across subroutine calls.
+The upper 12 bits of `FL` are unused. Arithmetic and logic instructions update the flags listed in their descriptions and never modify the unused bits. `FL` is not preserved across subroutine calls.
 
-### Instruction Layout
+### Instruction Encoding
 
-Each instruction occupies 6 bytes:
+TVM-16 uses a simple fixed-length encoding system. Each instruction is encoded as thirty-two bits (two words). The first byte, called the **header**, holds the instruction's variant and opcode. The two most significant bit of the header encode the variant, while the least significant six bits encode the opcode.
 
-| Byte(s) | Contents |
-| :- | :- |
-| `0` | variant |
-| `1` | opcode |
-| `2–3` | first operand, often called the "destination" or "destination operand" |
-| `4–5` | second operand, often called the "source" or "source operand" |
+The following three bytes are used to encode the operands. The first operand is called the Destination Operand (`DEST`) and the second operand is called the Source Operand (`SRC`).
 
-For example:
+For instructions where `DEST` and `SRC` are both registers, `DEST` is encoded as the lower four bits of the second byte, and `SRC` is encoded as the upper four. The last two bytes are unused.
 
+For instructions where `DEST` is a register and `SRC` is an immediate value, `DEST` is encoded as the second byte, while `SRC` is encoded as the last two bytes.
+
+For instructions that do not use `SRC`, `DEST` is encoded as the middle two bytes. The last byte is unused.
+
+For instructions that do not use either operand, the last three bytes are unused.
+
+As an example, consider the following instruction written in human-readable TVM-16 assembly:
 ```
-ADD R2, @0xAFC8
-```
-
-is encoded as:
-
-```
-03 16 02 00 C8 AF
+ADD R2, 0xAFC8
 ```
 
-This decodes as variant `0x03`, opcode `ADD` (`0x16`), operand 1 `R2` (`0x0002`), and operand 2 `0xAFC8`. The assembler encodes unused operand fields as zero, and the decoder ignores them.
+This would be encoded as the following machine code:
+```
+0x: 56 02 C8 AF
+0b: 01010110 00000010 11001000 10101111
+```
+
+#### Specific Edge Cases
+
+For variant `0x2` of `STW`, `DEST` is encoded as the middle two bytes, and `SRC` is encoded as the last byte.
+
+For variant `0x3` of `STB`, `DEST` is encoded as the second byte, and `SRC` is encoded as the third byte. The last byte is unused.
 
 ### Calling Convention
 
@@ -114,13 +124,17 @@ A call creates a stack frame. The caller pushes word arguments from right to lef
 | `R0` | low word of return value; caller-saved |
 | `R1` | high word of return value; caller-saved |
 | `R2` | scratch; caller-saved |
-| `R3` | addressing scratch; caller-saved |
+| `R3` | scratch; caller-saved |
+| `R4` | scratch; caller-saved |
+| `R5` | scratch; caller-saved |
+| `R6` | scratch; caller-saved |
+| `R7` | scratch; caller-saved |
 | `SP` | stack pointer; callee-saved |
 | `BP` | base pointer; callee-saved |
-| `PC` | instruction pointer; not modified directly by ordinary code |
+| `PC` | instruction pointer; generally not modified directly |
 | `FL` | status flags; not preserved across calls |
 
-Only `SP` and `BP` are guaranteed to survive a call. A caller that needs `R0`–`R3` after a call must save them explicitly, for example by pushing them onto the stack.
+Only `SP` and `BP` are guaranteed to survive a call. A caller that needs `R0-7` after a call must save them explicitly, for example by pushing them onto the stack.
 
 #### Argument Passing
 
@@ -201,22 +215,6 @@ Character literals use single quotes:
 PSB 'a'
 ```
 
-String literals use double quotes. The assembler expands them into individual byte operations. Only `STB` and `PSB` accept string literals. Strings are **not** implicitly null-terminated; include `\0` explicitly when a terminator is required.
-
-```
-STB 0x3320, "hello"
-
-# equivalent expansion
-STB 0x3320, 'h'
-STB 0x3321, 'e'
-STB 0x3322, 'l'
-STB 0x3323, 'l'
-STB 0x3324, 'o'
-
-# null-terminated string
-STB 0x3320, "hello\0"
-```
-
 ### Labels
 
 A label resolves to the address of the instruction that follows it.
@@ -242,7 +240,7 @@ countdown:
 
 ### Dereferencing
 
-The `@` prefix treats its operand as a memory address and loads or stores through that address.
+In load operations (`LDW`, `LDB`), the `@` prefix can be used to treat its right operand as a memory address and load through that address. This is called **dereferencing.**
 
 ```
 LDW R0, @0x2000    # R0 = the word stored at address 0x2000
@@ -251,15 +249,13 @@ LDW R3, 0x2000     # R3 = the value 0x2000 (no @, so no memory access)
 LDW R0, @R3        # R0 = the word stored at the address held in R3
 ```
 
-Store instructions (`STW`, `STB`) are the exception: their destination operand is always interpreted as an address, so it is written without `@` (for example `STW 0x2000, R0` or `STW R3, R0`).
-
 ### Segments
 
 Programs contain four segments. STATIC starts at `0x0000` and DATA follows it. The stack occupies the region ending at `0x7FFF`, and CODE starts at `0x8000`. The region between DATA and the stack is unreserved; if the stack grows past it, it overwrites DATA or STATIC.
 
 ```
-0x0000 ┌───────────────────────────────┐
-       │ STATIC: zero-initialized      │
+       ┌───────────────────────────────┐
+0x0000 │ STATIC: zero-initialized      │
        │ grows toward higher addresses │
        ├───────────────────────────────┤
        │ DATA: initialized values      │
@@ -268,15 +264,14 @@ Programs contain four segments. STATIC starts at `0x0000` and DATA follows it. T
        │ heap (unreserved)             │
        ├───────────────────────────────┤
        │ STACK: frames and arguments   │
-       │ grows toward lower addresses  │
-0x7FFF ├───────────────────────────────┤
+0x7FFF │ grows toward lower addresses  │
+       ├───────────────────────────────┤
 0x8000 │ CODE: executable instructions │
        │ grows toward higher addresses │
        │                               │
        │                               │
-       │                               │
-       │                               │
-0xFFFF └───────────────────────────────┘
+0xFFFF │                               │
+       └───────────────────────────────┘
 ```
 
 Examples in this document use literal addresses such as `0x2000` for brevity. In a real program, use STATIC/DATA symbols, or make sure literal addresses do not overlap those segments.
@@ -351,12 +346,13 @@ main:
     HLT
 ```
 
-The executable file would look like this (translated to hexadecimal for readability):
+The executable's hex-dump would look like this:
 ```
-70 54 56 4D 0C 00 03 00
-34 12 78 03 01 00 00 00
-00 02 03 02 00 00 00 00
-09 00 00 00 00
+70 54 56 4D
+0C 00 03 00
+41 01 34 12
+83 78 00 00
+09 00 00 00
 ```
 
 When the program is loaded into memory, the CPU reads the first 4 bytes to verify that the file is a valid TVM-16 executable. It then reads the next 2 bytes to determine the size of the STATIC segment, and the following 2 bytes to determine the size of the DATA segment. The CPU then initializes the DATA segment with the values provided in the executable file, and finally loads the CODE segment into memory starting at address `0x8000`. The CPU then sets `PC` to `0x8000` and begins executing instructions.
@@ -375,7 +371,7 @@ SEGMENT DATA:
 
 ## Instruction Set
 
-Each instruction's **variant** (byte 0 of the encoding) selects which operand forms it takes. Operand notation used below:
+Each instruction's **variant** (upper two bytes of the header) selects which operand forms it takes. Operand notation used below:
 
 | Notation | Meaning |
 | :- | :- |
@@ -384,7 +380,7 @@ Each instruction's **variant** (byte 0 of the encoding) selects which operand fo
 | `[@Rn]` | the memory at the address held in a register |
 | `[@immediate]` | the memory at a literal address |
 
-Most two-operand instructions (`LDW`, `LDB`, and the arithmetic, logic, and compare instructions) share one variant pattern: `0x0` = register, register; `0x1` = register, immediate; `0x2` = register, `@`register; `0x3` = register, `@`immediate. Store instructions and single-operand instructions differ and are listed individually.
+Note that most two-operand instructions (specifically ones used for arithmetic and logic) only have two variants: one where `SRC` is a register and one where it is an immediate value. The CPU is generally only able to operate on data that is currently being held in a register.
 
 ### State Instructions
 These instructions move data between registers, memory, and the stack, and control the program and its host environment (`HLT`, `SYS`).
@@ -418,24 +414,25 @@ Preserves the high byte.
 | `0x3` | `LDB [Rn], [@immediate]` |
 ***
 #### `0x03`: STW (Store Word)
-Stores a word at a memory location. Operand 1 is the destination address; operand 2 is the value to store.
+Stores a word at a memory location. `DEST` is the destination address; `SRC` is the value to store.
 
 | Variant | Usage |
 | :- | :- |
 | `0x0` | `STW [Rn], [Rn]` |
 | `0x1` | `STW [Rn], [immediate]` |
 | `0x2` | `STW [immediate], [Rn]` |
-| `0x3` | `STW [immediate], [immediate]` |
+
+Note: `STW` does not have an immediate-to-immediate variant because it would require a header + two 16-bit operands, which TVM-16's encoding system cannot represent.
 ***
 #### `0x04`: STB (Store Byte)
-Stores a byte at a memory location. Operand 1 is the destination address; operand 2 is the value to store.
+Stores a byte at a memory location. `DEST` is the destination address; `SRC` is the value to store.
 
 | Variant | Usage |
 | :- | :- |
 | `0x0` | `STB [Rn], [Rn]` |
 | `0x1` | `STB [Rn], [immediate]` |
 | `0x2` | `STB [immediate], [Rn]` |
-| `0x3` | `STB [immediate], [immediate/string literal]` |
+| `0x3` | `STB [immediate], [immediate]` |
 ***
 #### `0x05`: PSW (Push Word)
 Decreases the stack pointer by `2`, then stores the word at the new stack pointer.
@@ -451,7 +448,7 @@ Decreases the stack pointer by `1`, then stores the byte at the new stack pointe
 | Variant | Usage |
 | :- | :- |
 | `0x0` | `PSB [Rn]` |
-| `0x1` | `PSB [immediate/string literal]` |
+| `0x1` | `PSB [immediate]` |
 ***
 #### `0x07`: PPW (Pop Word)
 Reads the word at the stack pointer into a register, then increases the stack pointer by `2`.
@@ -482,26 +479,6 @@ Invokes a [system call](#system-calls).
 | :- | :- |
 | `0x0` | `SYS` |
 
-#### String Literal Operands
-
-`STB` (`0x04`, variant `0x3`) and `PSB` (`0x06`) accept string literals, which the assembler expands into one single-byte instruction per character. For `STB`, successive characters go to successive addresses (see [Literals](#literals)). For `PSB`, the bytes are pushed in reverse, so:
-
-```
-PSB "Hello"
-```
-
-is the same as:
-
-```
-PSB 'o'
-PSB 'l'
-PSB 'l'
-PSB 'e'
-PSB 'H'
-```
-
-The stack grows toward lower addresses, so pushing the string in the original order would cause the bytes to end up reversed in memory; that is to say, `SP` would point at `'o'`, and reading upward from `SP` would yield `olleH`.
-
 ### Branch Instructions
 These instructions manipulate the sequence of the program's execution.
 
@@ -511,9 +488,7 @@ Branches to an address.
 | Variant | Usage |
 | :- | :- |
 | `0x0` | `BRC [Rn]` |
-| `0x1` | `BRC [immediate/label]` |
-| `0x2` | `BRC [@Rn]` |
-| `0x3` | `BRC [@immediate]` |
+| `0x1` | `BRC [immediate]` |
 ***
 #### `0x0C`: BEQ (Branch if Equal)
 Branches to an address if `ZF` is set.
@@ -521,7 +496,7 @@ Branches to an address if `ZF` is set.
 | Variant | Usage |
 | :- | :- |
 | `0x0` | `BEQ [Rn]` |
-| `0x1` | `BEQ [immediate/label]` |
+| `0x1` | `BEQ [immediate]` |
 | `0x2` | `BEQ [@Rn]` |
 | `0x3` | `BEQ [@immediate]` |
 ***
@@ -531,7 +506,7 @@ Branches to an address if `ZF` is clear.
 | Variant | Usage |
 | :- | :- |
 | `0x0` | `BNE [Rn]` |
-| `0x1` | `BNE [immediate/label]` |
+| `0x1` | `BNE [immediate]` |
 | `0x2` | `BNE [@Rn]` |
 | `0x3` | `BNE [@immediate]` |
 ***
@@ -541,7 +516,7 @@ Branches to an address if `CF` is set.
 | Variant | Usage |
 | :- | :- |
 | `0x0` | `BCA [Rn]` |
-| `0x1` | `BCA [immediate/label]` |
+| `0x1` | `BCA [immediate]` |
 | `0x2` | `BCA [@Rn]` |
 | `0x3` | `BCA [@immediate]` |
 ***
@@ -551,7 +526,7 @@ Branches to an address if `CF` is clear.
 | Variant | Usage |
 | :- | :- |
 | `0x0` | `BNC [Rn]` |
-| `0x1` | `BNC [immediate/label]` |
+| `0x1` | `BNC [immediate]` |
 | `0x2` | `BNC [@Rn]` |
 | `0x3` | `BNC [@immediate]` |
 ***
@@ -561,7 +536,7 @@ Branches to an address if `SF` is set.
 | Variant | Usage |
 | :- | :- |
 | `0x0` | `BMI [Rn]` |
-| `0x1` | `BMI [immediate/label]` |
+| `0x1` | `BMI [immediate]` |
 | `0x2` | `BMI [@Rn]` |
 | `0x3` | `BMI [@immediate]` |
 ***
@@ -571,7 +546,7 @@ Branches to an address if `SF` is clear.
 | Variant | Usage |
 | :- | :- |
 | `0x0` | `BPL [Rn]` |
-| `0x1` | `BPL [immediate/label]` |
+| `0x1` | `BPL [immediate]` |
 | `0x2` | `BPL [@Rn]` |
 | `0x3` | `BPL [@immediate]` |
 ***
@@ -581,7 +556,7 @@ Branches to an address if `OF` is set.
 | Variant | Usage |
 | :- | :- |
 | `0x0` | `BOV [Rn]` |
-| `0x1` | `BOV [immediate/label]` |
+| `0x1` | `BOV [immediate]` |
 | `0x2` | `BOV [@Rn]` |
 | `0x3` | `BOV [@immediate]` |
 ***
@@ -591,7 +566,7 @@ Branches to an address if `OF` is clear.
 | Variant | Usage |
 | :- | :- |
 | `0x0` | `BNO [Rn]` |
-| `0x1` | `BNO [immediate/label]` |
+| `0x1` | `BNO [immediate]` |
 | `0x2` | `BNO [@Rn]` |
 | `0x3` | `BNO [@immediate]` |
 ***
@@ -602,7 +577,7 @@ Does not modify `BP`; the callee establishes its own frame (see [Calling Convent
 | Variant | Usage |
 | :- | :- |
 | `0x0` | `CLL [Rn]` |
-| `0x1` | `CLL [immediate/label]` |
+| `0x1` | `CLL [immediate]` |
 | `0x2` | `CLL [@Rn]` |
 | `0x3` | `CLL [@immediate]` |
 ***
@@ -629,8 +604,6 @@ Stores the result in the destination.
 | :- | :- |
 | `0x0` | `ADD [Rn], [Rn]` |
 | `0x1` | `ADD [Rn], [immediate]` |
-| `0x2` | `ADD [Rn], [@Rn]` |
-| `0x3` | `ADD [Rn], [@immediate]` |
 ***
 #### `0x17`: ADS (Add Signed)
 Performs a signed addition on the two operands.\
@@ -639,18 +612,16 @@ Stores the result in the destination.
 | Flag | Condition |
 | :- | :- |
 | `ZF` | Result = `0` |
-| `SF` | Result < `0` |
-| `OF` | Signed overflow occurred |
+| `SF` | Result < `0`|
+| `OF` | Result overflowed or underflowed |
 
 | Variant | Usage |
 | :- | :- |
 | `0x0` | `ADS [Rn], [Rn]` |
 | `0x1` | `ADS [Rn], [immediate]` |
-| `0x2` | `ADS [Rn], [@Rn]` |
-| `0x3` | `ADS [Rn], [@immediate]` |
 ***
 #### `0x18`: ADC (Add With Carry)
-Performs an unsigned addition of the two operands and `CF` (operand 1 + operand 2 + `CF`).\
+Performs an unsigned addition of the two operands and `CF` (`DEST` + `SRC` + `CF`).\
 Stores the result in the destination.
 
 | Flag | Condition |
@@ -662,8 +633,6 @@ Stores the result in the destination.
 | :- | :- |
 | `0x0` | `ADC [Rn], [Rn]` |
 | `0x1` | `ADC [Rn], [immediate]` |
-| `0x2` | `ADC [Rn], [@Rn]` |
-| `0x3` | `ADC [Rn], [@immediate]` |
 ***
 #### `0x19`: SUB (Subtract)
 Performs an unsigned subtraction on the two operands.\
@@ -678,8 +647,6 @@ Stores the result in the destination.
 | :- | :- |
 | `0x0` | `SUB [Rn], [Rn]` |
 | `0x1` | `SUB [Rn], [immediate]` |
-| `0x2` | `SUB [Rn], [@Rn]` |
-| `0x3` | `SUB [Rn], [@immediate]` |
 ***
 #### `0x1A`: SBS (Subtract Signed)
 Performs a signed subtraction on the two operands.\
@@ -689,17 +656,15 @@ Stores the result in the destination.
 | :- | :- |
 | `ZF` | Result = `0` |
 | `SF` | Result < `0`|
-| `OF` | Signed overflow or underflow occurred |
+| `OF` | Result overflowed or underflowed |
 
 | Variant | Usage |
 | :- | :- |
 | `0x0` | `SBS [Rn], [Rn]` |
 | `0x1` | `SBS [Rn], [immediate]` |
-| `0x2` | `SBS [Rn], [@Rn]` |
-| `0x3` | `SBS [Rn], [@immediate]` |
 ***
 #### `0x1B`: SBB (Subtract With Borrow)
-Performs an unsigned subtraction of the two operands and `CF` (operand 1 - operand 2 - `CF`).\
+Performs an unsigned subtraction of the two operands and `CF` (`DEST` - `SRC` - `CF`).\
 Stores the result in the destination.
 
 | Flag | Condition |
@@ -711,8 +676,6 @@ Stores the result in the destination.
 | :- | :- |
 | `0x0` | `SBB [Rn], [Rn]` |
 | `0x1` | `SBB [Rn], [immediate]` |
-| `0x2` | `SBB [Rn], [@Rn]` |
-| `0x3` | `SBB [Rn], [@immediate]` |
 ***
 #### `0x1C`: AND (Bitwise AND)
 Performs a bitwise AND on the two operands.\
@@ -726,8 +689,6 @@ Stores the result in the destination.
 | :- | :- |
 | `0x0` | `AND [Rn], [Rn]` |
 | `0x1` | `AND [Rn], [immediate]` |
-| `0x2` | `AND [Rn], [@Rn]` |
-| `0x3` | `AND [Rn], [@immediate]` |
 ***
 #### `0x1D`: IOR (Bitwise Inclusive OR)
 Performs a bitwise inclusive OR on the two operands.\
@@ -741,8 +702,6 @@ Stores the result in the destination.
 | :- | :- |
 | `0x0` | `IOR [Rn], [Rn]` |
 | `0x1` | `IOR [Rn], [immediate]` |
-| `0x2` | `IOR [Rn], [@Rn]` |
-| `0x3` | `IOR [Rn], [@immediate]` |
 ***
 #### `0x1E`: XOR (Bitwise Exclusive OR)
 Performs a bitwise exclusive OR on the two operands.\
@@ -756,8 +715,6 @@ Stores the result in the destination.
 | :- | :- |
 | `0x0` | `XOR [Rn], [Rn]` |
 | `0x1` | `XOR [Rn], [immediate]` |
-| `0x2` | `XOR [Rn], [@Rn]` |
-| `0x3` | `XOR [Rn], [@immediate]` |
 ***
 #### `0x1F`: NOT (Bitwise NOT)
 Performs a bitwise NOT on the operand and stores the result in the operand.
@@ -801,37 +758,33 @@ Performs an unsigned comparison on the two operands without modifying either one
 
 | Flag | Condition |
 | :- | :- |
-| `ZF` | Operand 1 = Operand 2 |
-| `CF` | Operand 1 < Operand 2 |
+| `ZF` | `DEST` = `SRC` |
+| `CF` | `DEST` < `SRC` |
 
 | Variant | Usage |
 | :- | :- |
 | `0x0` | `CMP [Rn], [Rn]` |
 | `0x1` | `CMP [Rn], [immediate]` |
-| `0x2` | `CMP [Rn], [@Rn]` |
-| `0x3` | `CMP [Rn], [@immediate]` |
 ***
 #### `0x23`: CPS (Compare Signed)
 Performs a signed comparison on the two operands without modifying either one.
 
 | Flag | Condition |
 | :- | :- |
-| `ZF` | Operand 1 = Operand 2 |
-| `CF` | Operand 1 < Operand 2 |
-| `SF` | The signed difference (operand 1 - operand 2) is negative |
-| `OF` | The signed subtraction overflowed or underflowed |
+| `ZF` | `DEST` = `SRC` |
+| `CF` | `DEST` < `SRC` |
+| `SF` | Result < `0` |
+| `OF` | Result overflowed or underflowed |
 
 | Variant | Usage |
 | :- | :- |
 | `0x0` | `CPS [Rn], [Rn]` |
 | `0x1` | `CPS [Rn], [immediate]` |
-| `0x2` | `CPS [Rn], [@Rn]` |
-| `0x3` | `CPS [Rn], [@immediate]` |
 
 ## System Calls
 System calls (abbreviated as "syscalls"), are operations that hand execution of the program over to the runtime environment. They can be used for input/output operations, like printing to the console or reading from a file, or miscellaneous utilities beyond the scope of the base instruction set. System calls are implementation-defined, and will differ depending on the runtime environment you use.
 
-The system call ID is passed to the runtime in `R0`. It may also read in or write back additional data in any of the general-purpose registers (`R0`-`R3`). The exact usage of the registers is defined by the syscall ID. After the arguments are loaded, the program must invoke the syscall by executing the `SYS` instruction.
+The system call ID is passed to the runtime in `R0`. It may also read in or write back additional data in any of the general-purpose registers (`R0-7`). The exact usage of the registers is defined by the syscall ID. After the arguments are loaded, the program must invoke the syscall by executing the `SYS` instruction.
 For example, a syscall that reads from the standard input stream into a buffer might take the buffer address in `R1`, and the number of bytes to read in `R2`. The syscall might then return the number of bytes actually read in `R2`.
 ```
 # Example: syscall 0x00 reads bytes from stdin into a buffer
