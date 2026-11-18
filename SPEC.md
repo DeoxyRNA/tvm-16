@@ -40,7 +40,7 @@ The stack grows downward (toward lower addresses) from `0x7FFF`. The code segmen
 
 ### Registers
 
-The CPU has eight 16-bit registers. Registers provide the intermediary between the CPU and memory; values cannot be copied directly from one memory address to another.
+The CPU has twelve 16-bit registers. Registers provide the intermediary between the CPU and memory; values cannot be copied directly from one memory address to another.
 
 | Register | ID | Purpose |
 | :- | :- | :- |
